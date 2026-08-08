@@ -11,6 +11,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
+from .automation import AUTOMATION_PORT, AutomationBridge, AutomationServer
 from .database import Database
 from .diagnostics import (
     configure_exception_logging,
@@ -77,12 +78,24 @@ def main() -> int:
         )
         return 1
 
+    automation_bridge = AutomationBridge()
+    automation_bridge.command_received.connect(window.handle_automation_request)
+    automation_server = AutomationServer(automation_bridge.dispatch)
+    try:
+        automation_server.start()
+    except OSError:
+        window.statusBar().showMessage(
+            f"本地自动化接口未启动：端口 {AUTOMATION_PORT} 不可用。",
+            5000,
+        )
+
     cleaned_up = False
 
     def release_resources() -> None:
         nonlocal cleaned_up
         if cleaned_up:
             return
+        automation_server.stop()
         window.chat_widget.shutdown()
         database.close()
         shutdown_exception_logging()

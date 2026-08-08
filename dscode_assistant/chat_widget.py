@@ -124,6 +124,11 @@ class ChatWidget(QWidget):
     def active_session_id(self) -> int | None:
         return self._session.id if self._session is not None else None
 
+    def set_draft_text(self, text: str) -> None:
+        """Place locally supplied text in the composer without sending it."""
+        self._input.setPlainText(text)
+        self._input.setFocus()
+
     def set_session(self, session: ChatSession) -> None:
         """Load a local session into the chat view."""
         if self._worker is not None and self._worker.isRunning():

@@ -56,6 +56,19 @@ python -m dscode_assistant
 
 卸载程序不会主动删除用户数据。如需彻底清除，可在软件中清理历史，并在卸载后手动删除上述数据目录及系统凭据库中的 DSCode Assistant 凭据。
 
+## 本地 Automation 接口
+
+应用启动后会在 `127.0.0.1:18765` 提供仅限本机访问的 JSON 接口，供本地工具唤醒 DSC、选择项目并创建待确认的编程任务。任务只会预填到输入框，不会自动调用 DeepSeek API。
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| `GET` | `/v1/status` | 检测应用、项目、会话及生成状态 |
+| `POST` | `/v1/app/activate` | 显示并激活 DSC 窗口 |
+| `POST` | `/v1/projects/open` | 设置当前项目，JSON：`{"path":"D:\\Project"}` |
+| `POST` | `/v1/tasks` | 创建任务草稿，JSON：`{"title":"任务名","instruction":"任务内容","project_path":"D:\\Project"}` |
+
+该接口不监听局域网地址，不提供 AI 服务端或 Agent 能力，也不会自动发送任务内容。
+
 ## 构建 Windows 版本
 
 运行：
@@ -69,4 +82,3 @@ build_windows.bat
 ## 开源协议
 
 本项目采用 [MIT License](LICENSE)。允许个人和商业使用、修改及再分发，但必须保留原始版权和许可声明。本项目无盈利目的，且不对 DeepSeek 官方服务的可用性或费用承担责任。
-

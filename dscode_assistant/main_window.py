@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from http import HTTPStatus
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSize, Qt
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from .chat_widget import ChatWidget
 from .about_dialog import AboutDialog
+from .automation import AutomationRequest
 from .database import Database
 from .settings import SettingsManager
 from .settings_dialog import SettingsDialog
@@ -50,6 +52,8 @@ class MainWindow(QMainWindow):
         self._settings_manager = settings_manager or SettingsManager()
         self._database = database or Database(self._settings_manager)
         self._database.initialize()
+        self._automation_project_path: Path | None = None
+        self._automation_task: dict[str, object] | None = None
 
         self.setObjectName("appRoot")
         self.setWindowTitle("DSCode Assistant")
@@ -368,6 +372,132 @@ class MainWindow(QMainWindow):
 
     def open_about(self) -> None:
         AboutDialog(self).exec()
+
+    def handle_automation_request(self, request: AutomationRequest) -> None:
+        """Handle a localhost automation command on the Qt GUI thread."""
+        try:
+            if request.action == "status":
+                request.finish(HTTPStatus.OK, self._automation_status())
+            elif request.action == "activate":
+                self._activate_from_automation()
+                request.finish(HTTPStatus.OK, self._automation_status())
+            elif request.action == "open_project":
+                self._automation_open_project(request)
+            elif request.action == "create_task":
+                self._automation_create_task(request)
+            else:
+                request.finish(
+                    HTTPStatus.NOT_FOUND,
+                    {"ok": False, "error": "Unknown automation action."},
+                )
+        except Exception:
+            request.finish(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"ok": False, "error": "Automation command failed."},
+            )
+
+    def _automation_status(self) -> dict[str, object]:
+        return {
+            "ok": True,
+            "application": "DSCode Assistant",
+            "state": "generating" if self._chat_widget.is_generating else "ready",
+            "active_project": (
+                str(self._automation_project_path)
+                if self._automation_project_path is not None
+                else None
+            ),
+            "active_session_id": self._chat_widget.active_session_id,
+            "current_task": self._automation_task,
+        }
+
+    def _activate_from_automation(self) -> None:
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _automation_open_project(self, request: AutomationRequest) -> None:
+        raw_path = request.payload.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            request.finish(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "A non-empty project path is required."},
+            )
+            return
+        project_path = Path(raw_path).expanduser()
+        try:
+            project_path = project_path.resolve(strict=True)
+        except OSError:
+            request.finish(
+                HTTPStatus.NOT_FOUND,
+                {"ok": False, "error": "Project directory does not exist."},
+            )
+            return
+        if not project_path.is_dir():
+            request.finish(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Project path must be a directory."},
+            )
+            return
+
+        self._automation_project_path = project_path
+        self.setWindowTitle(f"DSCode Assistant — {project_path.name}")
+        self.statusBar().showMessage(f"当前自动化项目：{project_path}", 5000)
+        self._activate_from_automation()
+        request.finish(HTTPStatus.OK, self._automation_status())
+
+    def _automation_create_task(self, request: AutomationRequest) -> None:
+        if self._chat_widget.is_generating:
+            request.finish(
+                HTTPStatus.CONFLICT,
+                {"ok": False, "error": "A response is currently being generated."},
+            )
+            return
+        instruction = request.payload.get("instruction")
+        if not isinstance(instruction, str) or not instruction.strip():
+            request.finish(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "A non-empty task instruction is required."},
+            )
+            return
+        title_value = request.payload.get("title", "自动化编程任务")
+        if not isinstance(title_value, str):
+            request.finish(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error": "Task title must be a string."},
+            )
+            return
+        title = " ".join(title_value.split())[:80] or "自动化编程任务"
+
+        project_value = request.payload.get("project_path")
+        if project_value is not None:
+            project_request = AutomationRequest("open_project", {"path": project_value})
+            self._automation_open_project(project_request)
+            if project_request.status_code != HTTPStatus.OK:
+                request.finish(project_request.status_code, project_request.response)
+                return
+
+        settings = self._settings_manager.load()
+        session = self._database.create_session(
+            title=title,
+            model=str(settings["model"]),
+            prompt_id=self._chat_widget.current_prompt_id(),
+        )
+        self.refresh_history(session.id)
+
+        task_text = instruction.strip()
+        if self._automation_project_path is not None:
+            task_text = f"项目路径：{self._automation_project_path}\n\n任务：{task_text}"
+        self._chat_widget.set_draft_text(task_text)
+        self._automation_task = {
+            "title": title,
+            "status": "drafted",
+            "session_id": session.id,
+        }
+        self._activate_from_automation()
+        request.finish(HTTPStatus.CREATED, self._automation_status())
 
     @property
     def chat_widget(self) -> ChatWidget:
