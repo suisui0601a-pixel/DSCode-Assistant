@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dscode-assistant"
+version = "0.1.0"
+description = "A local-first DeepSeek API coding assistant desktop application."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "PySide6>=6.7,<7",
+    "httpx>=0.27,<1",
+    "keyring>=25,<26",
+    "Markdown>=3.6,<4",
+    "Pygments>=2.18,<3",
+    "bleach>=6.1,<7",
+]
+
+[project.gui-scripts]
+dscode-assistant = "dscode_assistant.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dscode_assistant*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+

@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+.build-venv/
+venv/
+env/
+
+# Build and packaging
+build/
+dist/
+release/
+release.zip
+*.egg-info/
+*.spec
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# IDE and operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets and runtime data
+.env
+*.log
+settings.json
+*.db
+*.db-shm
+*.db-wal
+
+# Generated reports and registration materials
+cache_test_report.md
+dscode_long_context_report.md
+copyright/

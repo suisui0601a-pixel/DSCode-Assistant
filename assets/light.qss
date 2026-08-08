@@ -1,0 +1,137 @@
+* {
+    font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    font-size: 14px;
+    color: #292b35;
+}
+
+QMainWindow, QDialog, QWidget#appRoot, QWidget#welcomePage {
+    background: #f6f7fa;
+}
+
+QWidget#sidebar {
+    background: #eef0f5;
+    border-right: 1px solid #dde0e8;
+}
+
+QLabel#brandName { font-size: 16px; font-weight: 650; }
+QLabel#sectionLabel { color: #747887; font-size: 12px; font-weight: 600; }
+QLabel#conversationTitle { font-weight: 550; }
+QLabel#conversationTime { color: #898d9b; font-size: 11px; }
+
+QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+    background: #ffffff;
+    border: 1px solid #d8dbe5;
+    border-radius: 7px;
+    padding: 7px 9px;
+    selection-background-color: #cbc8ec;
+}
+
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #8c88bd;
+}
+
+QLineEdit:disabled, QPlainTextEdit:disabled, QComboBox:disabled {
+    background: #eceef2;
+    color: #989ba7;
+}
+
+QPushButton {
+    min-height: 32px;
+    padding: 0 13px;
+    border: 1px solid #d5d8e2;
+    border-radius: 7px;
+    background: #ffffff;
+}
+
+QPushButton:hover { background: #f0f1f6; border-color: #c5c8d4; }
+QPushButton:pressed { background: #e6e8ef; }
+QPushButton:disabled { color: #a3a6b0; background: #eceef2; }
+
+QPushButton#primaryButton {
+    color: #ffffff;
+    background: #7773aa;
+    border-color: #7773aa;
+    font-weight: 600;
+}
+QPushButton#primaryButton:hover { background: #68649b; }
+QPushButton#dangerButton { color: #9b4e58; background: #fff5f6; border-color: #ebcbd0; }
+QPushButton#subtleButton, QPushButton#linkButton, QPushButton#codeCopyButton {
+    background: transparent;
+    border-color: transparent;
+    color: #65618e;
+}
+
+QListWidget {
+    background: transparent;
+    border: none;
+    outline: none;
+}
+QListWidget::item { border-radius: 8px; margin: 2px 0; }
+QListWidget::item:hover { background: #e5e7ef; }
+QListWidget::item:selected { background: #dad8ed; color: #292b35; }
+
+QFrame#chatHeader, QFrame#composerCard, QGroupBox {
+    background: #ffffff;
+    border: 1px solid #e0e2e9;
+    border-radius: 10px;
+}
+
+QFrame#composerCard { margin: 0; }
+QFrame#chatHeader { border-radius: 0; border-width: 0 0 1px 0; }
+QLabel#chatTitle { font-size: 17px; font-weight: 650; }
+QLabel#modelLabel { color: #747887; font-size: 12px; }
+
+QLabel[status="ready"], QLabel[status="connected"] {
+    color: #3f785f; background: #e8f3ed; border-radius: 9px; padding: 3px 9px;
+}
+QLabel[status="generating"] {
+    color: #655f98; background: #eeecfa; border-radius: 9px; padding: 3px 9px;
+}
+QLabel[status="offline"], QLabel[status="failed"] {
+    color: #9b4e58; background: #f9e9eb; border-radius: 9px; padding: 3px 9px;
+}
+
+QScrollArea#messageScroll { background: #f6f7fa; border: none; }
+QWidget#messageCanvas { background: #f6f7fa; }
+QFrame#messageBubble { border-radius: 10px; }
+QFrame#messageBubble[role="user"] { background: #e8e7f3; border: 1px solid #dad7eb; }
+QFrame#messageBubble[role="assistant"] { background: #ffffff; border: 1px solid #e1e3e9; }
+QLabel#messageAuthor { font-weight: 650; }
+QLabel#messageTime { color: #979aa6; font-size: 11px; }
+QLabel#messageState { color: #747887; font-size: 12px; }
+QTextBrowser#messageContent { background: transparent; border: none; }
+
+QFrame#codeBlock {
+    background: #20242d;
+    border: 1px solid #303642;
+    border-radius: 7px;
+}
+QLabel#codeLanguage { color: #b9bfcc; font-size: 11px; font-weight: 600; }
+QPlainTextEdit#codeView {
+    background: #20242d;
+    color: #e7eaf0;
+    border: none;
+    border-radius: 0;
+    padding: 3px;
+    selection-background-color: #555c70;
+}
+QFrame#codeBlock QPushButton#codeCopyButton { color: #c4c9d5; }
+
+QLabel#welcomeMark {
+    color: #ffffff; background: #8581b4; border-radius: 16px;
+    font-size: 22px; font-weight: 700;
+}
+QLabel#welcomeTitle { font-size: 28px; font-weight: 650; }
+QLabel#welcomeDescription { color: #696d7a; font-size: 15px; }
+QFrame#apiNotice { background: #f0eff9; border: 1px solid #dad7ed; border-radius: 8px; }
+
+QGroupBox {
+    margin-top: 14px;
+    padding: 16px 14px 12px 14px;
+    font-weight: 650;
+}
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
+
+QStatusBar { background: #f6f7fa; color: #747887; }
+QToolTip { background: #30333c; color: #ffffff; border: none; padding: 5px; }

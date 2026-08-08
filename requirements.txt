@@ -1,0 +1,7 @@
+PySide6>=6.7,<7
+httpx>=0.27,<1
+keyring>=25,<26
+Markdown>=3.6,<4
+Pygments>=2.18,<3
+bleach>=6.1,<7
+
