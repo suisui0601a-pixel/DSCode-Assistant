@@ -29,7 +29,13 @@ from .chat_widget import ChatWidget
 from .about_dialog import AboutDialog
 from .automation import AutomationRequest
 from .database import Database
-from .settings import SettingsManager
+from .settings import (
+    OPENAI_COMPATIBLE_PROVIDER_ID,
+    SettingsManager,
+    get_active_model,
+    get_provider_id,
+    is_provider_configured,
+)
 from .settings_dialog import SettingsDialog
 from .ui_components import ConversationItem, StatusBadge, WelcomeWidget
 
@@ -86,7 +92,9 @@ class MainWindow(QMainWindow):
         self._chat_widget = ChatWidget(self._database, self._settings_manager)
         self._chat_widget.history_changed.connect(self.refresh_history)
 
-        self._welcome_widget = WelcomeWidget(self._settings_manager.has_api_key())
+        self._welcome_widget = WelcomeWidget(
+            is_provider_configured(self._settings_manager)
+        )
         self._welcome_widget.new_chat_requested.connect(self.new_chat)
         self._welcome_widget.recent_chat_requested.connect(self.open_recent_chat)
         self._welcome_widget.settings_requested.connect(self.open_settings)
@@ -174,10 +182,14 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
     def _update_api_status(self) -> None:
-        if self._settings_manager.has_api_key():
-            self._api_badge.set_status("API 已配置", "connected")
+        settings = self._settings_manager.load()
+        if is_provider_configured(self._settings_manager):
+            if get_provider_id(settings) == OPENAI_COMPATIBLE_PROVIDER_ID:
+                self._api_badge.set_status("兼容 API 已配置", "connected")
+            else:
+                self._api_badge.set_status("API 已配置", "connected")
         else:
-            self._api_badge.set_status("API 未配置", "offline")
+            self._api_badge.set_status("模型未配置", "offline")
 
     def _show_welcome(self) -> None:
         self._history_list.clearSelection()
@@ -191,7 +203,7 @@ class MainWindow(QMainWindow):
         settings = self._settings_manager.load()
         session = self._database.create_session(
             title="新对话",
-            model=str(settings["model"]),
+            model=get_active_model(settings),
             prompt_id=self._chat_widget.current_prompt_id(),
         )
         self.refresh_history(session.id)
@@ -482,7 +494,7 @@ class MainWindow(QMainWindow):
         settings = self._settings_manager.load()
         session = self._database.create_session(
             title=title,
-            model=str(settings["model"]),
+            model=get_active_model(settings),
             prompt_id=self._chat_widget.current_prompt_id(),
         )
         self.refresh_history(session.id)

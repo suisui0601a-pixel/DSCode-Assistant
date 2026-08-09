@@ -18,6 +18,7 @@ from shiboken6 import delete as delete_qt_object
 from .api_client import ChatWorker, DeepSeekClient
 from .database import Database
 from .markdown_renderer import MarkdownRenderer
+from .model_providers import DeepSeekProvider, OpenAICompatibleProvider
 from .models import (
     ChatMessage,
     ChatOptions,
@@ -26,7 +27,13 @@ from .models import (
     MessageStatus,
 )
 from .prompts import PROMPT_TEMPLATES
-from .settings import SettingsManager
+from .settings import (
+    OPENAI_COMPATIBLE_PROVIDER_ID,
+    SettingsManager,
+    get_active_model,
+    get_provider_id,
+    is_provider_configured,
+)
 from .ui_components import ChatInputWidget, MessageBubble, StatusBadge
 
 
@@ -154,8 +161,9 @@ class ChatWidget(QWidget):
         if self._session is None or self._session.id is None:
             QMessageBox.warning(self, "无法发送", "请先创建一个会话。")
             return
-        if not self._settings_manager.has_api_key():
-            QMessageBox.warning(self, "缺少 API Key", "请先在设置中保存 API Key。")
+        settings = self._settings_manager.load()
+        if not is_provider_configured(self._settings_manager):
+            QMessageBox.warning(self, "模型未配置", "请先在设置中完成模型提供商配置。")
             return
 
         user_text = self._input.toPlainText().strip()
@@ -181,18 +189,23 @@ class ChatWidget(QWidget):
         self._messages.append(assistant_message)
         self._render_messages()
 
-        settings = self._settings_manager.load()
         options = ChatOptions(
-            model=str(settings["model"]),
+            model=get_active_model(settings),
             temperature=float(settings["temperature"]),
             max_tokens=int(settings["max_tokens"]),
             request_timeout=float(settings["request_timeout"]),
         )
-        worker = ChatWorker(
-            DeepSeekClient(self._settings_manager),
-            request_messages,
-            options,
-        )
+        provider_id = get_provider_id(settings)
+        if provider_id == OPENAI_COMPATIBLE_PROVIDER_ID:
+            client = OpenAICompatibleProvider(
+                str(settings["openai_compatible_base_url"]),
+                api_key=lambda: self._settings_manager.get_provider_api_key(
+                    OPENAI_COMPATIBLE_PROVIDER_ID
+                ),
+            )
+        else:
+            client = DeepSeekProvider(DeepSeekClient(self._settings_manager))
+        worker = ChatWorker(client, request_messages, options)
         worker.chunk_received.connect(self._on_chunk_received)
         worker.completed.connect(self._on_completed)
         worker.failed.connect(self._on_failed)

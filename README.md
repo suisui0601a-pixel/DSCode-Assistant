@@ -77,7 +77,7 @@ python -m dscode_assistant
 - `OpenAICompatibleProvider`：支持标准 `/models` 与 `/chat/completions` 接口，可连接远程兼容服务，也可连接本机兼容端点。
 - `ProviderRegistry`：供后续按需注册新的远程服务或本地模型适配器。
 
-当前设置页面和默认提供商仍为 DeepSeek。本阶段不包含模型下载、模型管理、GPU 调度或自动切换功能。
+设置页面可选择 DeepSeek 或 OpenAI Compatible，并分别配置模型与系统凭据库中的 API Key；OpenAI Compatible 还支持自定义 Base URL。旧版设置缺少提供商字段时仍默认使用 DeepSeek。本阶段不包含模型下载、模型管理、GPU 调度或自动切换功能。
 
 ## 构建 Windows 版本
 

@@ -16,9 +16,19 @@ from keyring.errors import PasswordDeleteError
 APP_DIRECTORY_NAME: Final = "DSCodeAssistant"
 KEYRING_SERVICE_NAME: Final = "DSCode Assistant"
 KEYRING_ACCOUNT_NAME: Final = "deepseek-api-key"
+DEEPSEEK_PROVIDER_ID: Final = "deepseek"
+OPENAI_COMPATIBLE_PROVIDER_ID: Final = "openai-compatible"
+OPENAI_COMPATIBLE_KEYRING_ACCOUNT_NAME: Final = "openai-compatible-api-key"
+SUPPORTED_PROVIDER_IDS: Final = {
+    DEEPSEEK_PROVIDER_ID,
+    OPENAI_COMPATIBLE_PROVIDER_ID,
+}
 
 DEFAULT_SETTINGS: Final[dict[str, str | int | float]] = {
+    "provider": DEEPSEEK_PROVIDER_ID,
     "model": "deepseek-chat",
+    "openai_compatible_base_url": "http://127.0.0.1:11434/v1",
+    "openai_compatible_model": "",
     "temperature": 0.7,
     "max_tokens": 4096,
     "request_timeout": 60.0,
@@ -97,20 +107,31 @@ class SettingsManager:
 
     def get_api_key(self) -> str | None:
         """Read the DeepSeek API key from the operating system credential store."""
+        return self.get_provider_api_key(DEEPSEEK_PROVIDER_ID)
+
+    def get_provider_api_key(self, provider_id: str) -> str | None:
+        """Read a provider API key from the operating system credential store."""
         try:
-            return keyring.get_password(KEYRING_SERVICE_NAME, KEYRING_ACCOUNT_NAME)
+            return keyring.get_password(
+                KEYRING_SERVICE_NAME,
+                self._provider_keyring_account(provider_id),
+            )
         except Exception:
             return None
 
     def set_api_key(self, api_key: str) -> None:
         """Save the DeepSeek API key in the operating system credential store."""
+        self.set_provider_api_key(DEEPSEEK_PROVIDER_ID, api_key)
+
+    def set_provider_api_key(self, provider_id: str, api_key: str) -> None:
+        """Save a provider API key in the operating system credential store."""
         normalized_key = api_key.strip()
         if not normalized_key:
             raise ValueError("API key cannot be empty.")
         try:
             keyring.set_password(
                 KEYRING_SERVICE_NAME,
-                KEYRING_ACCOUNT_NAME,
+                self._provider_keyring_account(provider_id),
                 normalized_key,
             )
         except Exception as error:
@@ -118,8 +139,15 @@ class SettingsManager:
 
     def delete_api_key(self) -> None:
         """Delete the DeepSeek API key from the operating system credential store."""
+        self.delete_provider_api_key(DEEPSEEK_PROVIDER_ID)
+
+    def delete_provider_api_key(self, provider_id: str) -> None:
+        """Delete a provider API key from the operating system credential store."""
         try:
-            keyring.delete_password(KEYRING_SERVICE_NAME, KEYRING_ACCOUNT_NAME)
+            keyring.delete_password(
+                KEYRING_SERVICE_NAME,
+                self._provider_keyring_account(provider_id),
+            )
         except PasswordDeleteError:
             return
         except Exception as error:
@@ -129,3 +157,49 @@ class SettingsManager:
         """Return whether a non-empty API key exists in the credential store."""
         api_key = self.get_api_key()
         return bool(api_key and api_key.strip())
+
+    def has_provider_api_key(self, provider_id: str) -> bool:
+        """Return whether a provider has a non-empty stored API key."""
+        api_key = self.get_provider_api_key(provider_id)
+        return bool(api_key and api_key.strip())
+
+    @staticmethod
+    def _provider_keyring_account(provider_id: str) -> str:
+        if provider_id == DEEPSEEK_PROVIDER_ID:
+            return KEYRING_ACCOUNT_NAME
+        if provider_id == OPENAI_COMPATIBLE_PROVIDER_ID:
+            return OPENAI_COMPATIBLE_KEYRING_ACCOUNT_NAME
+        raise ValueError(f"Unsupported model provider: {provider_id}")
+
+
+def get_provider_id(settings: Mapping[str, Any]) -> str:
+    """Return a supported provider ID, preserving DeepSeek as the legacy default."""
+    provider_id = settings.get("provider", DEEPSEEK_PROVIDER_ID)
+    if provider_id in SUPPORTED_PROVIDER_IDS:
+        return str(provider_id)
+    return DEEPSEEK_PROVIDER_ID
+
+
+def get_active_model(settings: Mapping[str, Any]) -> str:
+    """Return the model name selected for the active provider."""
+    if get_provider_id(settings) == OPENAI_COMPATIBLE_PROVIDER_ID:
+        compatible_model = settings.get("openai_compatible_model", "")
+        if isinstance(compatible_model, str) and compatible_model.strip():
+            return compatible_model.strip()
+    model = settings.get("model", DEFAULT_SETTINGS["model"])
+    return str(model).strip() or str(DEFAULT_SETTINGS["model"])
+
+
+def is_provider_configured(settings_manager: SettingsManager) -> bool:
+    """Return whether the active provider has the minimum local configuration."""
+    settings = settings_manager.load()
+    if get_provider_id(settings) == OPENAI_COMPATIBLE_PROVIDER_ID:
+        base_url = settings.get("openai_compatible_base_url")
+        model = settings.get("openai_compatible_model")
+        return bool(
+            isinstance(base_url, str)
+            and base_url.strip()
+            and isinstance(model, str)
+            and model.strip()
+        )
+    return settings_manager.has_api_key()

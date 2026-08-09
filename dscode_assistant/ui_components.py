@@ -90,7 +90,7 @@ class WelcomeWidget(QWidget):
         title.setObjectName("welcomeTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        description = QLabel("一个本地运行、数据不上传的 DeepSeek 编程助手")
+        description = QLabel("一个本地运行、数据不上传的 AI 编程助手")
         description.setObjectName("welcomeDescription")
         description.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -128,7 +128,7 @@ class WelcomeWidget(QWidget):
             api_notice.setObjectName("apiNotice")
             notice_layout = QHBoxLayout(api_notice)
             notice_layout.setContentsMargins(14, 10, 14, 10)
-            notice_layout.addWidget(QLabel("尚未配置 API Key，请先完成本地设置。"))
+            notice_layout.addWidget(QLabel("尚未完成模型提供商配置，请先打开设置。"))
             configure_button = QPushButton("打开设置")
             configure_button.setObjectName("linkButton")
             configure_button.clicked.connect(self.settings_requested)
