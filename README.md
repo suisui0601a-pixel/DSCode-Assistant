@@ -87,7 +87,13 @@ python -m dscode_assistant
 build_windows.bat
 ```
 
-脚本会创建独立构建环境、安装依赖、生成 PyInstaller 便携版和 `release.zip`。如果电脑安装了 Inno Setup 6，还会生成 `release\DSCode Assistant Setup.exe`。
+脚本会创建独立构建环境、安装依赖，并按当前版本生成：
+
+- `release\v<版本号>\portable\`：PyInstaller 便携目录。
+- `release\DSCode v<版本号> Portable.zip`：便携版压缩包。
+- `release\DSCode v<版本号>.exe`：由 Inno Setup 6 生成的安装包。
+
+构建只清理当前版本目录和同名产物，不会删除 `release` 中已有的旧安装包。
 
 ## 开源协议
 
