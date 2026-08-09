@@ -69,6 +69,16 @@ python -m dscode_assistant
 
 该接口不监听局域网地址，不提供 AI 服务端或 Agent 能力，也不会自动发送任务内容。
 
+## 模型提供商扩展接口
+
+`dscode_assistant.model_providers` 提供统一的 `ModelProvider` 流式聊天接口：
+
+- `DeepSeekProvider`：包装现有 `DeepSeekClient`，不改变当前 GUI 默认调用链。
+- `OpenAICompatibleProvider`：支持标准 `/models` 与 `/chat/completions` 接口，可连接远程兼容服务，也可连接本机兼容端点。
+- `ProviderRegistry`：供后续按需注册新的远程服务或本地模型适配器。
+
+当前设置页面和默认提供商仍为 DeepSeek。本阶段不包含模型下载、模型管理、GPU 调度或自动切换功能。
+
 ## 构建 Windows 版本
 
 运行：
