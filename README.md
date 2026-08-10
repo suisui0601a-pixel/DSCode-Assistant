@@ -129,8 +129,21 @@ build_windows.bat
 - [开发说明](docs/开发说明.md)
 - [API 配置说明](docs/API配置说明.md)
 - [常见问题](docs/常见问题.md)
+- [贡献指南](CONTRIBUTING.md)
 - [版本变更记录](CHANGELOG.md)
 - [v0.1.0 版本说明](RELEASE_NOTES_v0.1.0.md)
+
+## 联系方式
+
+Bug、功能建议和可复现的问题请优先通过 [GitHub Issues](https://github.com/suisui0601a-pixel/DSCode-Assistant/issues) 提交。提交前请移除 API Key、Token、私人代码、本地数据库及其他敏感信息。
+
+### International Support
+
+Email: [dscode.assistant@gmail.com](mailto:dscode.assistant@gmail.com)
+
+### 国内用户支持
+
+邮箱：[qwertyuiop076@163.com](mailto:qwertyuiop076@163.com)
 
 ## 开源协议
 
