@@ -1,9 +1,9 @@
 #ifndef AppVersion
-  #define AppVersion "0.4.0"
+  #define AppVersion "0.1.0"
 #endif
 
 #ifndef BuildSource
-  #define BuildSource "release\v0.4.0\portable"
+  #define BuildSource "release\v0.1.0\portable"
 #endif
 
 #define AppName "DSCode Assistant"

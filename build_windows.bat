@@ -6,7 +6,7 @@ if errorlevel 1 goto :fail
 
 set "BUILD_VENV=.build-venv"
 set "BUILD_ENTRY=_pyinstaller_entry.py"
-set "APP_VERSION=0.4.0"
+set "APP_VERSION=0.1.0"
 set "RELEASE_ROOT=release"
 set "VERSION_DIR=%RELEASE_ROOT%\v%APP_VERSION%"
 set "PORTABLE_DIR=%VERSION_DIR%\portable"

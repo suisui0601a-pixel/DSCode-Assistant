@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dscode-assistant"
-version = "0.4.0"
+version = "0.1.0"
 description = "A local-first DeepSeek API coding assistant desktop application."
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 dependencies = [
     "PySide6>=6.7,<7",
     "httpx>=0.27,<1",

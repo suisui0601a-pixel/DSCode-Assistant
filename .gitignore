@@ -33,11 +33,17 @@ Thumbs.db
 
 # Local secrets and runtime data
 .env
+.env.*
+!.env.example
 *.log
 settings.json
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
+*.pem
+*.key
 
 # Generated reports and registration materials
 cache_test_report.md
