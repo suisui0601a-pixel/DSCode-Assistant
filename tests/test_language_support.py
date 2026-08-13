@@ -5,6 +5,8 @@ from __future__ import annotations
 import unittest
 
 from dscode_assistant.languages import (
+    DetectionIssueKind,
+    DetectionOutcome,
     DetectionSource,
     LanguageDetector,
     LanguageId,
@@ -107,6 +109,107 @@ console.log(answer)
             (LanguageId.PYTHON, LanguageId.TYPESCRIPT),
         )
         self.assertEqual(len(first.matches), 2)
+
+    def test_diagnose_preserves_unknown_fence_as_local_observation(self) -> None:
+        report = self.detector.diagnose("```brainlang\nthink()\n```")
+
+        self.assertEqual(report.outcome, DetectionOutcome.UNKNOWN)
+        self.assertEqual(report.detection.matches, ())
+        self.assertEqual(len(report.observations), 1)
+        self.assertEqual(report.observations[0].evidence, "brainlang")
+        self.assertFalse(report.observations[0].recognized)
+        self.assertEqual(report.observations[0].candidates, ())
+        self.assertEqual(report.observations[0].confidence, 0.0)
+        self.assertEqual(report.observations[0].occurrence, 1)
+        self.assertEqual(report.issues[0].kind, DetectionIssueKind.UNKNOWN_ALIAS)
+        self.assertEqual(report.issues[0].observation_indexes, (0,))
+
+    def test_diagnose_h_extension_reports_shared_extension_ambiguity(self) -> None:
+        report = self.detector.diagnose(filename="include/library.h")
+
+        self.assertEqual(report.outcome, DetectionOutcome.AMBIGUOUS)
+        self.assertEqual(report.detection.candidates, (LanguageId.C, LanguageId.CPP))
+        self.assertEqual(report.observations[0].candidates, (LanguageId.C, LanguageId.CPP))
+        self.assertEqual(report.issues[0].kind, DetectionIssueKind.SHARED_EXTENSION)
+
+    def test_diagnose_keeps_java_and_javascript_distinct(self) -> None:
+        java = self.detector.diagnose("```java\nclass Main {}\n```")
+        javascript = self.detector.diagnose("```javascript\nconst x = 1;\n```")
+
+        self.assertEqual(java.outcome, DetectionOutcome.IDENTIFIED)
+        self.assertEqual(java.detection.candidates, (LanguageId.JAVA,))
+        self.assertEqual(javascript.outcome, DetectionOutcome.IDENTIFIED)
+        self.assertEqual(javascript.detection.candidates, (LanguageId.JAVASCRIPT,))
+        self.assertEqual(java.issues, ())
+        self.assertEqual(javascript.issues, ())
+
+    def test_diagnose_multi_language_code_blocks_is_not_a_conflict(self) -> None:
+        report = self.detector.diagnose(
+            "```python\nprint('ok')\n```\n```typescript\nconst ok = true;\n```"
+        )
+
+        self.assertEqual(report.outcome, DetectionOutcome.MULTI_LANGUAGE)
+        self.assertEqual(
+            report.detection.candidates,
+            (LanguageId.PYTHON, LanguageId.TYPESCRIPT),
+        )
+        self.assertEqual(
+            tuple(observation.occurrence for observation in report.observations),
+            (1, 2),
+        )
+        self.assertEqual(report.issues[0].kind, DetectionIssueKind.MULTIPLE_LANGUAGES)
+        self.assertEqual(report.issues[0].observation_indexes, (0, 1))
+
+    def test_diagnose_explicit_and_fence_disagreement_is_conflicting(self) -> None:
+        report = self.detector.diagnose(
+            "```javascript\nconst x = 1;\n```",
+            explicit_language="java",
+        )
+
+        self.assertEqual(report.outcome, DetectionOutcome.CONFLICTING)
+        self.assertEqual(
+            report.detection.candidates,
+            (LanguageId.JAVA, LanguageId.JAVASCRIPT),
+        )
+        self.assertEqual(
+            report.issues[0].kind,
+            DetectionIssueKind.EXPLICIT_FENCE_CONFLICT,
+        )
+        self.assertEqual(report.issues[0].observation_indexes, (0, 1))
+
+    def test_diagnose_unique_language_is_identified(self) -> None:
+        report = self.detector.diagnose(
+            "```python\nprint('ok')\n```",
+            filename="script.py",
+            explicit_language="python",
+        )
+
+        self.assertEqual(report.outcome, DetectionOutcome.IDENTIFIED)
+        self.assertEqual(report.detection.primary_language, LanguageId.PYTHON)
+        self.assertEqual(report.issues, ())
+        self.assertEqual(len(report.observations), 3)
+        self.assertEqual(
+            report.detection,
+            self.detector.detect(
+                "```python\nprint('ok')\n```",
+                filename="script.py",
+                explicit_language="python",
+            ),
+        )
+
+    def test_diagnose_is_deterministic_across_repeated_runs(self) -> None:
+        inputs = {
+            "text": "```unknown\nx\n```\n```cpp\nint main() {}\n```",
+            "filename": "include/value.h",
+            "explicit_language": "c++",
+        }
+
+        first = self.detector.diagnose(**inputs)
+        second = self.detector.diagnose(**inputs)
+
+        self.assertEqual(first, second)
+        self.assertEqual(first.observations, second.observations)
+        self.assertEqual(first.issues, second.issues)
 
 
 if __name__ == "__main__":

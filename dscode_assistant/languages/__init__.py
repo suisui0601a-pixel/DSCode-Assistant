@@ -1,6 +1,13 @@
 """Public interface for the independent Language Support foundation layer."""
 
 from .detector import LanguageDetector
+from .diagnostics import (
+    DetectionIssue,
+    DetectionIssueKind,
+    DetectionObservation,
+    DetectionOutcome,
+    LanguageDetectionReport,
+)
 from .models import (
     CommentSyntax,
     DetectionSource,
@@ -15,8 +22,13 @@ from .registry import LanguageRegistry, build_default_registry
 __all__ = [
     "CommentSyntax",
     "DEFAULT_LANGUAGE_PROFILES",
+    "DetectionIssue",
+    "DetectionIssueKind",
+    "DetectionObservation",
+    "DetectionOutcome",
     "DetectionSource",
     "LanguageDetection",
+    "LanguageDetectionReport",
     "LanguageDetector",
     "LanguageId",
     "LanguageMatch",
