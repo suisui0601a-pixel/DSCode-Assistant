@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
+from ..languages import DEFAULT_LANGUAGE_PROFILES, LanguageDetector, LanguageId
+
 
 MessageMapping = Mapping[str, str]
 
@@ -146,6 +148,12 @@ class ContextProtector:
         r"|\bcannot find symbol\b|\bundefined reference\b|\bcompilation failed\b",
         re.IGNORECASE,
     )
+    _GENERIC_ERROR_PATTERN: Final = re.compile(
+        r"Traceback \(most recent call last\):"
+        r"|\b(?:[A-Za-z_][\w.]*)?(?:Error|Exception)\b"
+        r"|(?:^|\n)\s*(?:fatal\s+)?error(?:\s+[A-Z]+\d+)?\s*:",
+        re.IGNORECASE,
+    )
     _CONSTRAINT_PATTERN: Final = re.compile(
         r"必须|禁止|不要|不允许|务必|不得|保留(?:全部|现有|原始|当前)?"
         r"|\bmust(?:\s+not)?\b|\bdo\s+not\b|\bdon't\b|\bnever\b"
@@ -158,6 +166,21 @@ class ContextProtector:
         r"|\b[\w.-]+\.(?:py|pyi|c|h|cc|cpp|cxx|hpp|java|js|jsx|ts|tsx|json|toml|yaml|yml|sql|qss|ui)\b",
         re.IGNORECASE,
     )
+    _GENERIC_PATH_PATTERN: Final = re.compile(
+        r"(?:\b[A-Za-z]:[\\/]|(?<!:)\B/)(?:[^\s<>:\"|?*]+[\\/])*[^\s<>:\"|?*]+"
+        r"|\b(?:[\w.-]+[\\/])+[\w.-]+\b",
+        re.IGNORECASE,
+    )
+    _FILE_TOKEN_PATTERN: Final = re.compile(
+        r"(?<![\w.])(?:[\w.-]+[\\/])*[\w.-]+\.[A-Za-z0-9+]+",
+        re.IGNORECASE,
+    )
+    _PROFILES_BY_ID: Final = {
+        profile.language_id: profile for profile in DEFAULT_LANGUAGE_PROFILES
+    }
+
+    def __init__(self, language_detector: LanguageDetector | None = None) -> None:
+        self._language_detector = language_detector
 
     def inspect(self, messages: Sequence[MessageMapping]) -> ProtectionPlan:
         """Return deterministic protection decisions for ``messages``."""
@@ -179,12 +202,22 @@ class ContextProtector:
                 protect(index, ProtectionReason.CODE_BLOCK)
             if self._PATCH_PATTERN.search(content):
                 protect(index, ProtectionReason.PATCH)
-            if self._ERROR_PATTERN.search(content):
-                protect(index, ProtectionReason.ERROR_LOG)
+            if self._language_detector is None:
+                if self._ERROR_PATTERN.search(content):
+                    protect(index, ProtectionReason.ERROR_LOG)
+                if self._FILE_REFERENCE_PATTERN.search(content):
+                    protect(index, ProtectionReason.FILE_REFERENCE)
+            else:
+                language_ids, language_file_reference = self._language_evidence(content)
+                if self._GENERIC_ERROR_PATTERN.search(content) or self._has_language_error(
+                    content,
+                    language_ids,
+                ):
+                    protect(index, ProtectionReason.ERROR_LOG)
+                if language_file_reference or self._GENERIC_PATH_PATTERN.search(content):
+                    protect(index, ProtectionReason.FILE_REFERENCE)
             if self._CONSTRAINT_PATTERN.search(content):
                 protect(index, ProtectionReason.EXPLICIT_CONSTRAINT)
-            if self._FILE_REFERENCE_PATTERN.search(content):
-                protect(index, ProtectionReason.FILE_REFERENCE)
 
         current_user = self._last_valid_index(messages, "user")
         if current_user is not None:
@@ -199,6 +232,39 @@ class ContextProtector:
             for index in sorted(reasons_by_index)
         )
         return ProtectionPlan(protected_messages)
+
+    def _language_evidence(
+        self,
+        content: str,
+    ) -> tuple[tuple[LanguageId, ...], bool]:
+        if self._language_detector is None:
+            return (), False
+
+        detected = set(self._language_detector.detect(content).candidates)
+        language_file_reference = False
+        for match in self._FILE_TOKEN_PATTERN.finditer(content):
+            filename_detection = self._language_detector.detect(filename=match.group(0))
+            if filename_detection.candidates:
+                language_file_reference = True
+                detected.update(filename_detection.candidates)
+
+        return (
+            tuple(language_id for language_id in LanguageId if language_id in detected),
+            language_file_reference,
+        )
+
+    @classmethod
+    def _has_language_error(
+        cls,
+        content: str,
+        language_ids: tuple[LanguageId, ...],
+    ) -> bool:
+        normalized_content = content.casefold()
+        return any(
+            keyword.casefold() in normalized_content
+            for language_id in language_ids
+            for keyword in cls._PROFILES_BY_ID[language_id].error_keywords
+        )
 
     def _last_valid_index(
         self,

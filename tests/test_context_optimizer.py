@@ -16,6 +16,7 @@ from dscode_assistant.context import (
     ProtectionReason,
     ProtectionResult,
 )
+from dscode_assistant.languages import LanguageDetector
 from dscode_assistant.settings import (
     CONTEXT_OPTIMIZATION_LIGHT,
     CONTEXT_OPTIMIZATION_RAW,
@@ -213,6 +214,95 @@ class ContextOptimizerTests(unittest.TestCase):
         self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
         self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(1))
         self.assertEqual(result.messages[:2], messages[:2])
+
+    def test_default_protector_keeps_legacy_behavior_without_detector(self) -> None:
+        messages = [
+            {"role": "user", "content": "main.cpp:12: undefined reference"},
+            {"role": "user", "content": "Review module.mts"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
+        self.assertNotIn(ProtectionReason.FILE_REFERENCE, plan.reasons_for(1))
+
+    def test_injected_detector_enhances_language_file_protection(self) -> None:
+        messages = [
+            {"role": "user", "content": "Review module.mts"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector(LanguageDetector()).inspect(messages)
+
+        self.assertIn(ProtectionReason.FILE_REFERENCE, plan.reasons_for(0))
+
+    def test_injected_detector_protects_python_error(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": "```python\nTraceback (most recent call last):\nModuleNotFoundError\n```",
+            },
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector(LanguageDetector()).inspect(messages)
+
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
+
+    def test_injected_detector_protects_java_profile_error(self) -> None:
+        messages = [
+            {"role": "user", "content": "```java\nMain.java: cannot find symbol\n```"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector(LanguageDetector()).inspect(messages)
+
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.FILE_REFERENCE, plan.reasons_for(0))
+
+    def test_injected_detector_protects_c_and_cpp_profile_errors(self) -> None:
+        messages = [
+            {"role": "user", "content": "```c\nsegmentation fault\n```"},
+            {"role": "user", "content": "```cpp\ntemplate instantiation failed\n```"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector(LanguageDetector()).inspect(messages)
+
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(1))
+
+    def test_injected_detector_handles_multi_language_message(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    "```python\nprint('ok')\n```\n"
+                    "```java\nMain.java: cannot find symbol\n```"
+                ),
+            },
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector(LanguageDetector()).inspect(messages)
+
+        self.assertIn(ProtectionReason.CODE_BLOCK, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.FILE_REFERENCE, plan.reasons_for(0))
+
+    def test_raw_messages_do_not_change_with_injected_detector(self) -> None:
+        messages = [
+            {"role": "system", "content": "Keep exact spacing."},
+            {"role": "user", "content": "```cpp\ntemplate instantiation\n```"},
+        ]
+        optimizer = ContextOptimizer(
+            protector=ContextProtector(LanguageDetector()),
+        )
+
+        result = optimizer.prepare(messages, OptimizationLevel.RAW)
+
+        self.assertEqual(result.messages, messages)
 
     def test_file_paths_are_protected(self) -> None:
         messages = [
