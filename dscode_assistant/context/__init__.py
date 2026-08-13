@@ -7,6 +7,8 @@ from .protection import (
     ProtectedMessage,
     ProtectionPlan,
     ProtectionReason,
+    ProtectionReasonCount,
+    ProtectionResult,
 )
 
 __all__ = [
@@ -19,4 +21,6 @@ __all__ = [
     "ProtectedMessage",
     "ProtectionPlan",
     "ProtectionReason",
+    "ProtectionReasonCount",
+    "ProtectionResult",
 ]

@@ -14,6 +14,7 @@ from dscode_assistant.context import (
     LightweightTokenEstimator,
     OptimizationLevel,
     ProtectionReason,
+    ProtectionResult,
 )
 from dscode_assistant.settings import (
     CONTEXT_OPTIMIZATION_LIGHT,
@@ -256,6 +257,115 @@ class ContextOptimizerTests(unittest.TestCase):
         second = self.optimizer.prepare(first, OptimizationLevel.LIGHT).messages
 
         self.assertEqual(second, first)
+
+    def test_protection_statistics_count_unique_messages_and_reasons(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "```python\nprint('x')\n```"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertEqual(result.protection.protected_message_count, 4)
+        self.assertEqual(result.protection.count_for(ProtectionReason.SYSTEM), 1)
+        self.assertEqual(result.protection.count_for(ProtectionReason.CODE_BLOCK), 1)
+        self.assertEqual(result.protection.count_for(ProtectionReason.RECENT_RESPONSE), 1)
+        self.assertEqual(result.protection.count_for(ProtectionReason.CURRENT_TASK), 1)
+        self.assertEqual(result.protection.total_reason_matches, 4)
+        self.assertEqual(
+            tuple(item.reason for item in result.protection.reason_counts),
+            (
+                ProtectionReason.SYSTEM,
+                ProtectionReason.CURRENT_TASK,
+                ProtectionReason.RECENT_RESPONSE,
+                ProtectionReason.CODE_BLOCK,
+            ),
+        )
+
+    def test_multi_reason_message_counts_once_but_each_reason_is_recorded(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": "Do not change app.py\n```python\nprint('x')\n```",
+            }
+        ]
+
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertEqual(result.protection.protected_message_count, 1)
+        self.assertEqual(result.protection.count_for(ProtectionReason.CURRENT_TASK), 1)
+        self.assertEqual(result.protection.count_for(ProtectionReason.CODE_BLOCK), 1)
+        self.assertEqual(
+            result.protection.count_for(ProtectionReason.EXPLICIT_CONSTRAINT),
+            1,
+        )
+        self.assertEqual(result.protection.count_for(ProtectionReason.FILE_REFERENCE), 1)
+        self.assertEqual(result.protection.total_reason_matches, 4)
+
+    def test_raw_reports_protection_but_skips_no_optimization(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = self.optimizer.prepare(messages, OptimizationLevel.RAW)
+
+        self.assertEqual(result.messages, messages)
+        self.assertEqual(result.protection.protected_message_count, 2)
+        self.assertEqual(result.protection.skipped_optimization_count, 0)
+
+    def test_light_counts_messages_bypassed_due_to_protection(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Ordinary duplicate"},
+            {"role": "user", "content": "Ordinary duplicate"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertEqual(result.protection.protected_message_count, 3)
+        self.assertEqual(result.protection.skipped_optimization_count, 3)
+        self.assertEqual(result.messages.count(messages[1]), 1)
+
+    def test_empty_input_has_empty_observability(self) -> None:
+        for level in (OptimizationLevel.RAW, OptimizationLevel.LIGHT):
+            with self.subTest(level=level):
+                result = self.optimizer.prepare([], level)
+                self.assertEqual(result.messages, [])
+                self.assertEqual(result.protection, ProtectionResult())
+
+    def test_repeated_original_input_has_identical_observability(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Review app.py"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Do not change the API"},
+        ]
+
+        first = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+        second = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertEqual(first.messages, second.messages)
+        self.assertEqual(first.protection, second.protection)
+        self.assertEqual(first.estimated_tokens_before, second.estimated_tokens_before)
+        self.assertEqual(first.estimated_tokens_after, second.estimated_tokens_after)
+
+    def test_api_message_format_does_not_include_observability_fields(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertTrue(result.protection.protected_message_count)
+        self.assertTrue(
+            all(set(message) == {"role", "content"} for message in result.messages)
+        )
 
     def test_token_estimator_is_local_deterministic_and_counts_overhead(self) -> None:
         estimator = LightweightTokenEstimator(message_overhead=4)

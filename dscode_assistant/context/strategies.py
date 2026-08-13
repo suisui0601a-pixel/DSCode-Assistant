@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Final
 
 from .protection import ProtectionPlan
@@ -12,6 +13,18 @@ MessageMapping = Mapping[str, str]
 PreparedMessage = dict[str, str]
 
 
+@dataclass(frozen=True, slots=True)
+class StrategyResult:
+    """Internal prepared messages and strategy execution statistics."""
+
+    messages: list[PreparedMessage]
+    skipped_optimization_count: int = 0
+
+    def __post_init__(self) -> None:
+        if self.skipped_optimization_count < 0:
+            raise ValueError("Skipped optimization count cannot be negative.")
+
+
 class RawStrategy:
     """Copy messages without changing their order or values."""
 
@@ -19,8 +32,8 @@ class RawStrategy:
         self,
         messages: Sequence[MessageMapping],
         protection_plan: ProtectionPlan | None = None,
-    ) -> list[PreparedMessage]:
-        return [dict(message) for message in messages]
+    ) -> StrategyResult:
+        return StrategyResult([dict(message) for message in messages])
 
 
 class LightStrategy:
@@ -45,10 +58,11 @@ class LightStrategy:
         self,
         messages: Sequence[MessageMapping],
         protection_plan: ProtectionPlan | None = None,
-    ) -> list[PreparedMessage]:
+    ) -> StrategyResult:
         prepared: list[PreparedMessage] = []
         plan = protection_plan or ProtectionPlan()
         pending_short_run: list[PreparedMessage] = []
+        skipped_optimization_count = 0
 
         def flush_short_run() -> None:
             if not pending_short_run:
@@ -78,6 +92,7 @@ class LightStrategy:
             if protected:
                 flush_short_run()
                 prepared.append({"role": role, "content": content})
+                skipped_optimization_count += 1
                 continue
 
             if not role or not content.strip() or status in self._FAILED_STATUSES:
@@ -98,7 +113,7 @@ class LightStrategy:
             prepared.append(current)
 
         flush_short_run()
-        return prepared
+        return StrategyResult(prepared, skipped_optimization_count)
 
     def _is_short_merge_candidate(self, message: PreparedMessage) -> bool:
         return (

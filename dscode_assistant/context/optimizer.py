@@ -81,12 +81,15 @@ class ContextOptimizer:
 
         estimated_before = self._estimator.estimate_messages(messages)
         protection_plan = self._protector.inspect(messages)
-        prepared = strategy.apply(messages, protection_plan)
-        estimated_after = self._estimator.estimate_messages(prepared)
+        strategy_result = strategy.apply(messages, protection_plan)
+        estimated_after = self._estimator.estimate_messages(strategy_result.messages)
 
         return ContextResult(
-            messages=prepared,
+            messages=strategy_result.messages,
             level=normalized_level,
             estimated_tokens_before=estimated_before,
             estimated_tokens_after=estimated_after,
+            protection=protection_plan.to_result(
+                strategy_result.skipped_optimization_count
+            ),
         )

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
+
+from .protection import ProtectionResult
 
 
 class OptimizationLevel(IntEnum):
@@ -51,6 +53,7 @@ class ContextResult:
     level: OptimizationLevel
     estimated_tokens_before: int
     estimated_tokens_after: int
+    protection: ProtectionResult = field(default_factory=ProtectionResult)
 
     @property
     def estimated_tokens_saved(self) -> int:

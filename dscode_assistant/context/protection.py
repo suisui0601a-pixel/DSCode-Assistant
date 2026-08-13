@@ -40,6 +40,54 @@ class ProtectedMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class ProtectionReasonCount:
+    """A deterministic count for one protection reason."""
+
+    reason: ProtectionReason
+    count: int
+
+    def __post_init__(self) -> None:
+        if self.count <= 0:
+            raise ValueError("Protection reason count must be positive.")
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectionResult:
+    """Local observability data produced by context protection."""
+
+    protected_message_count: int = 0
+    reason_counts: tuple[ProtectionReasonCount, ...] = ()
+    skipped_optimization_count: int = 0
+
+    def __post_init__(self) -> None:
+        if self.protected_message_count < 0:
+            raise ValueError("Protected message count cannot be negative.")
+        if self.skipped_optimization_count < 0:
+            raise ValueError("Skipped optimization count cannot be negative.")
+        reason_order = tuple(ProtectionReason)
+        actual_reasons = tuple(item.reason for item in self.reason_counts)
+        expected_reasons = tuple(
+            reason for reason in reason_order if reason in actual_reasons
+        )
+        if len(set(actual_reasons)) != len(actual_reasons):
+            raise ValueError("Protection reason counts cannot contain duplicates.")
+        if actual_reasons != expected_reasons:
+            raise ValueError("Protection reason counts must use deterministic order.")
+
+    def count_for(self, reason: ProtectionReason) -> int:
+        """Return the number of messages protected for ``reason``."""
+        for item in self.reason_counts:
+            if item.reason == reason:
+                return item.count
+        return 0
+
+    @property
+    def total_reason_matches(self) -> int:
+        """Return all reason matches, including multiple reasons per message."""
+        return sum(item.count for item in self.reason_counts)
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectionPlan:
     """Immutable protection decisions for one original message sequence."""
 
@@ -55,6 +103,31 @@ class ProtectionPlan:
             if message.index == index:
                 return message.reasons
         return frozenset()
+
+    @property
+    def protected_message_count(self) -> int:
+        """Return the number of uniquely protected original messages."""
+        return len(self.protected_messages)
+
+    @property
+    def reason_counts(self) -> tuple[ProtectionReasonCount, ...]:
+        """Return reason counts in ``ProtectionReason`` declaration order."""
+        return tuple(
+            ProtectionReasonCount(
+                reason,
+                sum(reason in message.reasons for message in self.protected_messages),
+            )
+            for reason in ProtectionReason
+            if any(reason in message.reasons for message in self.protected_messages)
+        )
+
+    def to_result(self, skipped_optimization_count: int = 0) -> ProtectionResult:
+        """Build immutable observability data for a completed strategy run."""
+        return ProtectionResult(
+            protected_message_count=self.protected_message_count,
+            reason_counts=self.reason_counts,
+            skipped_optimization_count=skipped_optimization_count,
+        )
 
 
 class ContextProtector:
