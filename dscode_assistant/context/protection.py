@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
-from ..languages import DEFAULT_LANGUAGE_PROFILES, LanguageDetector, LanguageId
+from ..languages import (
+    DEFAULT_LANGUAGE_PROFILES,
+    LanguageDetectionReport,
+    LanguageDetector,
+    LanguageId,
+)
+from .inspection import MessageLanguageDiagnostic, ProtectionInspectionResult
 
 
 MessageMapping = Mapping[str, str]
@@ -184,7 +190,23 @@ class ContextProtector:
 
     def inspect(self, messages: Sequence[MessageMapping]) -> ProtectionPlan:
         """Return deterministic protection decisions for ``messages``."""
+        return self._inspect_internal(messages, collect_diagnostics=False).plan
+
+    def inspect_detailed(
+        self,
+        messages: Sequence[MessageMapping],
+    ) -> ProtectionInspectionResult:
+        """Return the protection plan with optional per-message diagnostics."""
+        return self._inspect_internal(messages, collect_diagnostics=True)
+
+    def _inspect_internal(
+        self,
+        messages: Sequence[MessageMapping],
+        *,
+        collect_diagnostics: bool,
+    ) -> ProtectionInspectionResult:
         reasons_by_index: dict[int, set[ProtectionReason]] = {}
+        language_diagnostics: list[MessageLanguageDiagnostic] = []
 
         def protect(index: int, reason: ProtectionReason) -> None:
             reasons_by_index.setdefault(index, set()).add(reason)
@@ -208,13 +230,22 @@ class ContextProtector:
                 if self._FILE_REFERENCE_PATTERN.search(content):
                     protect(index, ProtectionReason.FILE_REFERENCE)
             else:
-                language_ids, language_file_reference = self._language_evidence(content)
-                if self._GENERIC_ERROR_PATTERN.search(content) or self._has_language_error(
-                    content,
-                    language_ids,
-                ):
+                generic_error = bool(self._GENERIC_ERROR_PATTERN.search(content))
+                generic_file = bool(self._GENERIC_PATH_PATTERN.search(content))
+                if collect_diagnostics:
+                    (
+                        language_ids,
+                        language_file_reference,
+                        diagnostic,
+                    ) = self._detailed_language_evidence(index, content)
+                    language_diagnostics.append(diagnostic)
+                else:
+                    language_ids, language_file_reference = self._language_evidence(
+                        content
+                    )
+                if generic_error or self._has_language_error(content, language_ids):
                     protect(index, ProtectionReason.ERROR_LOG)
-                if language_file_reference or self._GENERIC_PATH_PATTERN.search(content):
+                if language_file_reference or generic_file:
                     protect(index, ProtectionReason.FILE_REFERENCE)
             if self._CONSTRAINT_PATTERN.search(content):
                 protect(index, ProtectionReason.EXPLICIT_CONSTRAINT)
@@ -231,7 +262,10 @@ class ContextProtector:
             ProtectedMessage(index, frozenset(reasons_by_index[index]))
             for index in sorted(reasons_by_index)
         )
-        return ProtectionPlan(protected_messages)
+        return ProtectionInspectionResult(
+            plan=ProtectionPlan(protected_messages),
+            language_diagnostics=tuple(language_diagnostics),
+        )
 
     def _language_evidence(
         self,
@@ -252,6 +286,57 @@ class ContextProtector:
             tuple(language_id for language_id in LanguageId if language_id in detected),
             language_file_reference,
         )
+
+    def _detailed_language_evidence(
+        self,
+        message_index: int,
+        content: str,
+    ) -> tuple[tuple[LanguageId, ...], bool, MessageLanguageDiagnostic]:
+        if self._language_detector is None:
+            raise RuntimeError("Detailed language evidence requires a detector.")
+
+        content_report = self._language_detector.diagnose(content)
+        detected = set(content_report.detection.candidates)
+        file_reports: list[LanguageDetectionReport] = []
+        for match in self._FILE_TOKEN_PATTERN.finditer(content):
+            report = self._language_detector.diagnose(filename=match.group(0))
+            if report.detection.candidates:
+                file_reports.append(report)
+                detected.update(report.detection.candidates)
+
+        language_ids = tuple(
+            language_id for language_id in LanguageId if language_id in detected
+        )
+        language_error = self._has_language_error(content, language_ids)
+        language_file_reference = bool(file_reports)
+        supported = tuple(
+            reason
+            for reason, applies in (
+                (ProtectionReason.ERROR_LOG, language_error),
+                (ProtectionReason.FILE_REFERENCE, language_file_reference),
+            )
+            if applies
+        )
+        added = tuple(
+            reason
+            for reason in supported
+            if not (
+                reason == ProtectionReason.ERROR_LOG
+                and self._GENERIC_ERROR_PATTERN.search(content)
+            )
+            and not (
+                reason == ProtectionReason.FILE_REFERENCE
+                and self._GENERIC_PATH_PATTERN.search(content)
+            )
+        )
+        diagnostic = MessageLanguageDiagnostic(
+            message_index=message_index,
+            content_report=content_report,
+            file_reports=tuple(file_reports),
+            language_supported_reasons=supported,
+            added_protection_reasons=added,
+        )
+        return language_ids, language_file_reference, diagnostic
 
     @classmethod
     def _has_language_error(

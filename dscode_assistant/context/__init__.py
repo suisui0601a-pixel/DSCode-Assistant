@@ -1,5 +1,6 @@
 """Local context preparation for model requests."""
 
+from .inspection import MessageLanguageDiagnostic, ProtectionInspectionResult
 from .models import ContextBudget, ContextResult, OptimizationLevel
 from .optimizer import ContextOptimizer, LightweightTokenEstimator
 from .protection import (
@@ -17,9 +18,11 @@ __all__ = [
     "ContextProtector",
     "ContextResult",
     "LightweightTokenEstimator",
+    "MessageLanguageDiagnostic",
     "OptimizationLevel",
     "ProtectedMessage",
     "ProtectionPlan",
+    "ProtectionInspectionResult",
     "ProtectionReason",
     "ProtectionReasonCount",
     "ProtectionResult",

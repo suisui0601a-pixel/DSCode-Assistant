@@ -16,7 +16,7 @@ from dscode_assistant.context import (
     ProtectionReason,
     ProtectionResult,
 )
-from dscode_assistant.languages import LanguageDetector
+from dscode_assistant.languages import DetectionOutcome, LanguageDetector, LanguageId
 from dscode_assistant.settings import (
     CONTEXT_OPTIMIZATION_LIGHT,
     CONTEXT_OPTIMIZATION_RAW,
@@ -303,6 +303,192 @@ class ContextOptimizerTests(unittest.TestCase):
         result = optimizer.prepare(messages, OptimizationLevel.RAW)
 
         self.assertEqual(result.messages, messages)
+
+    def test_inspect_and_detailed_inspection_return_identical_plans(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "```python\nModuleNotFoundError\n```"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+        protector = ContextProtector(LanguageDetector())
+
+        self.assertEqual(
+            protector.inspect_detailed(messages).plan,
+            protector.inspect(messages),
+        )
+
+    def test_detailed_inspection_without_detector_is_compatible(self) -> None:
+        messages = [
+            {"role": "user", "content": "Traceback: ValueError"},
+            {"role": "user", "content": "Current task"},
+        ]
+        protector = ContextProtector()
+
+        detailed = protector.inspect_detailed(messages)
+
+        self.assertEqual(detailed.plan, protector.inspect(messages))
+        self.assertEqual(detailed.language_diagnostics, ())
+
+    def test_detailed_inspection_reports_python_java_and_cpp(self) -> None:
+        messages = [
+            {"role": "user", "content": "```python\nModuleNotFoundError\n```"},
+            {"role": "user", "content": "```java\ncannot find symbol\n```"},
+            {"role": "user", "content": "```cpp\ntemplate instantiation\n```"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = ContextProtector(LanguageDetector()).inspect_detailed(messages)
+
+        self.assertEqual(
+            tuple(
+                diagnostic.content_report.detection.primary_language
+                for diagnostic in result.language_diagnostics[:3]
+            ),
+            (LanguageId.PYTHON, LanguageId.JAVA, LanguageId.CPP),
+        )
+        self.assertTrue(
+            all(
+                ProtectionReason.ERROR_LOG
+                in diagnostic.language_supported_reasons
+                for diagnostic in result.language_diagnostics[:3]
+            )
+        )
+
+    def test_detailed_inspection_reports_multi_language_message_once(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": (
+                    "```python\nprint('ok')\n```\n"
+                    "```typescript\nconst ok = true;\n```"
+                ),
+            },
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = ContextProtector(LanguageDetector()).inspect_detailed(messages)
+        diagnostic = result.language_diagnostics[0]
+
+        self.assertEqual(diagnostic.message_index, 0)
+        self.assertEqual(
+            diagnostic.content_report.outcome,
+            DetectionOutcome.MULTI_LANGUAGE,
+        )
+        self.assertEqual(
+            diagnostic.content_report.detection.candidates,
+            (LanguageId.PYTHON, LanguageId.TYPESCRIPT),
+        )
+
+    def test_detailed_inspection_preserves_original_nonzero_message_index(self) -> None:
+        messages = [
+            {"role": "user", "content": ""},
+            {"role": "assistant", "content": "discarded", "status": "failed"},
+            {"role": "user", "content": "```python\nprint('private code')\n```"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = ContextProtector(LanguageDetector()).inspect_detailed(messages)
+
+        self.assertEqual(result.language_diagnostics[0].message_index, 2)
+        self.assertNotIn("private code", repr(result.language_diagnostics[0]))
+
+    def test_detailed_inspection_reports_each_language_file_reference(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": "Review src/main.cpp and web/client.ts",
+            },
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = ContextProtector(LanguageDetector()).inspect_detailed(messages)
+        diagnostic = result.language_diagnostics[0]
+
+        self.assertEqual(len(diagnostic.file_reports), 2)
+        self.assertEqual(
+            tuple(report.detection.primary_language for report in diagnostic.file_reports),
+            (LanguageId.CPP, LanguageId.TYPESCRIPT),
+        )
+        self.assertIn(
+            ProtectionReason.FILE_REFERENCE,
+            diagnostic.language_supported_reasons,
+        )
+
+    def test_detailed_inspection_preserves_h_file_ambiguity(self) -> None:
+        messages = [
+            {"role": "user", "content": "Review include/library.h"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = ContextProtector(LanguageDetector()).inspect_detailed(messages)
+        file_report = result.language_diagnostics[0].file_reports[0]
+
+        self.assertEqual(file_report.outcome, DetectionOutcome.AMBIGUOUS)
+        self.assertEqual(file_report.detection.candidates, (LanguageId.C, LanguageId.CPP))
+
+    def test_detailed_inspection_distinguishes_supported_and_added_reasons(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": "```java\nException in thread in Main.java\n```",
+            },
+            {
+                "role": "user",
+                "content": "```typescript\nis not assignable to type in model.ts\n```",
+            },
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = ContextProtector(LanguageDetector()).inspect_detailed(messages)
+        java_diagnostic, typescript_diagnostic = result.language_diagnostics[:2]
+
+        self.assertIn(
+            ProtectionReason.ERROR_LOG,
+            java_diagnostic.language_supported_reasons,
+        )
+        self.assertNotIn(
+            ProtectionReason.ERROR_LOG,
+            java_diagnostic.added_protection_reasons,
+        )
+        self.assertIn(
+            ProtectionReason.ERROR_LOG,
+            typescript_diagnostic.language_supported_reasons,
+        )
+        self.assertIn(
+            ProtectionReason.ERROR_LOG,
+            typescript_diagnostic.added_protection_reasons,
+        )
+
+    def test_detailed_inspection_is_deterministic(self) -> None:
+        messages = [
+            {"role": "user", "content": "```cpp\ntemplate instantiation\n```"},
+            {"role": "user", "content": "Review include/value.h"},
+            {"role": "user", "content": "Current task"},
+        ]
+        protector = ContextProtector(LanguageDetector())
+
+        first = protector.inspect_detailed(messages)
+        second = protector.inspect_detailed(messages)
+
+        self.assertEqual(first, second)
+
+    def test_detailed_inspection_does_not_change_api_message_format(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "```python\nModuleNotFoundError\n```"},
+        ]
+        optimizer = ContextOptimizer(
+            protector=ContextProtector(LanguageDetector()),
+        )
+
+        ContextProtector(LanguageDetector()).inspect_detailed(messages)
+        result = optimizer.prepare(messages, OptimizationLevel.RAW)
+
+        self.assertEqual(result.messages, messages)
+        self.assertTrue(
+            all(set(message) == {"role", "content"} for message in result.messages)
+        )
 
     def test_file_paths_are_protected(self) -> None:
         messages = [
