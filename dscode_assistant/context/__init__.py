@@ -2,11 +2,21 @@
 
 from .models import ContextBudget, ContextResult, OptimizationLevel
 from .optimizer import ContextOptimizer, LightweightTokenEstimator
+from .protection import (
+    ContextProtector,
+    ProtectedMessage,
+    ProtectionPlan,
+    ProtectionReason,
+)
 
 __all__ = [
     "ContextBudget",
     "ContextOptimizer",
+    "ContextProtector",
     "ContextResult",
     "LightweightTokenEstimator",
     "OptimizationLevel",
+    "ProtectedMessage",
+    "ProtectionPlan",
+    "ProtectionReason",
 ]

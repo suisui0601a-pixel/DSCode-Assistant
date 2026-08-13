@@ -238,11 +238,14 @@ class UISmokeTests(unittest.TestCase):
             worker = FakeWorker.last_instance
             self.assertIsNotNone(worker)
             self.assertEqual(
-                worker.messages[-1],
+                worker.messages[-2:],
+                [
                 {
                     "role": "user",
-                    "content": "First detail\n\nSecond detail\n\nThird detail",
+                    "content": "First detail\n\nSecond detail",
                 },
+                {"role": "user", "content": "Third detail"},
+                ],
             )
             stats = window.chat_widget._context_stats_label.text()
             self.assertIn("优化前估算 Token：", stats)

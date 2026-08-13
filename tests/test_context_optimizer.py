@@ -10,8 +10,10 @@ from pathlib import Path
 from dscode_assistant.context import (
     ContextBudget,
     ContextOptimizer,
+    ContextProtector,
     LightweightTokenEstimator,
     OptimizationLevel,
+    ProtectionReason,
 )
 from dscode_assistant.settings import (
     CONTEXT_OPTIMIZATION_LIGHT,
@@ -47,15 +49,28 @@ class ContextOptimizerTests(unittest.TestCase):
             {"role": "system", "content": "System"},
             {"role": "user", "content": "A" * 300},
             {"role": "user", "content": "A" * 300},
-            {"role": "assistant", "content": "B" * 300},
+            {"role": "assistant", "content": "Earlier response"},
+            {"role": "user", "content": "Current task"},
         ]
 
         result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
 
         self.assertEqual(
             result.messages,
-            [messages[0], messages[1], messages[3]],
+            [messages[0], messages[1], messages[3], messages[4]],
         )
+
+    def test_light_removes_short_unprotected_duplicates(self) -> None:
+        messages = [
+            {"role": "user", "content": "Ordinary duplicate"},
+            {"role": "user", "content": "Ordinary duplicate"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertEqual(result.messages.count(messages[0]), 1)
 
     def test_light_removes_empty_messages(self) -> None:
         messages = [
@@ -80,6 +95,7 @@ class ContextOptimizerTests(unittest.TestCase):
             {"role": "user", "content": "First requirement"},
             {"role": "user", "content": "Second requirement"},
             {"role": "assistant", "content": "Acknowledged"},
+            {"role": "user", "content": "Current task"},
         ]
 
         result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
@@ -113,6 +129,133 @@ class ContextOptimizerTests(unittest.TestCase):
         result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
 
         self.assertEqual(result.messages, [{"role": "user", "content": "Question"}])
+
+    def test_system_message_is_protected_from_deduplication(self) -> None:
+        messages = [
+            {"role": "system", "content": "Same system instruction"},
+            {"role": "system", "content": "Same system instruction"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertTrue(plan.protects(0))
+        self.assertTrue(plan.protects(1))
+        self.assertIn(ProtectionReason.SYSTEM, plan.reasons_for(0))
+        self.assertEqual(result.messages, messages)
+
+    def test_current_user_and_recent_assistant_are_protected(self) -> None:
+        messages = [
+            {"role": "assistant", "content": "Older response"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Earlier task"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertEqual(
+            plan.reasons_for(1),
+            frozenset({ProtectionReason.RECENT_RESPONSE}),
+        )
+        self.assertEqual(
+            plan.reasons_for(3),
+            frozenset({ProtectionReason.CURRENT_TASK}),
+        )
+        self.assertEqual(result.messages[-2:], messages[-2:])
+
+    def test_identical_code_blocks_are_both_preserved(self) -> None:
+        code = "```python\nprint('keep exact')\n```"
+        messages = [
+            {"role": "user", "content": code},
+            {"role": "user", "content": code},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertIn(ProtectionReason.CODE_BLOCK, plan.reasons_for(0))
+        self.assertEqual(result.messages[:2], messages[:2])
+
+    def test_diff_patch_is_preserved_exactly(self) -> None:
+        patch = "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-old\n+new"
+        messages = [
+            {"role": "user", "content": patch},
+            {"role": "user", "content": patch},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertIn(ProtectionReason.PATCH, plan.reasons_for(0))
+        self.assertEqual(result.messages[:2], messages[:2])
+
+    def test_traceback_and_compiler_error_are_protected(self) -> None:
+        traceback = "Traceback (most recent call last):\n  File \"app.py\", line 1\nValueError: bad"
+        compiler = "main.cpp:12: error: cannot find symbol"
+        messages = [
+            {"role": "user", "content": traceback},
+            {"role": "user", "content": compiler},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.ERROR_LOG, plan.reasons_for(1))
+        self.assertEqual(result.messages[:2], messages[:2])
+
+    def test_file_paths_are_protected(self) -> None:
+        messages = [
+            {"role": "user", "content": r"Update D:\project\src\app.py"},
+            {"role": "user", "content": "Review src/service.ts"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertIn(ProtectionReason.FILE_REFERENCE, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.FILE_REFERENCE, plan.reasons_for(1))
+        self.assertEqual(result.messages[:2], messages[:2])
+
+    def test_explicit_constraints_in_chinese_and_english_are_protected(self) -> None:
+        messages = [
+            {"role": "user", "content": "禁止修改数据库结构"},
+            {"role": "user", "content": "Do not change the API contract"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        plan = ContextProtector().inspect(messages)
+        result = self.optimizer.prepare(messages, OptimizationLevel.LIGHT)
+
+        self.assertIn(ProtectionReason.EXPLICIT_CONSTRAINT, plan.reasons_for(0))
+        self.assertIn(ProtectionReason.EXPLICIT_CONSTRAINT, plan.reasons_for(1))
+        self.assertEqual(result.messages[:2], messages[:2])
+
+    def test_light_is_idempotent(self) -> None:
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "user", "content": "First short message"},
+            {"role": "user", "content": "Second short message"},
+            {"role": "assistant", "content": "Recent response"},
+            {"role": "user", "content": "Current task"},
+        ]
+
+        first = self.optimizer.prepare(messages, OptimizationLevel.LIGHT).messages
+        second = self.optimizer.prepare(first, OptimizationLevel.LIGHT).messages
+
+        self.assertEqual(second, first)
 
     def test_token_estimator_is_local_deterministic_and_counts_overhead(self) -> None:
         estimator = LightweightTokenEstimator(message_overhead=4)

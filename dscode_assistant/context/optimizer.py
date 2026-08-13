@@ -6,6 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 
 from .models import ContextBudget, ContextResult, OptimizationLevel
+from .protection import ContextProtector
 from .strategies import LightStrategy, RawStrategy
 
 
@@ -43,8 +44,13 @@ class LightweightTokenEstimator:
 class ContextOptimizer:
     """Prepare model messages using an explicitly selected local strategy."""
 
-    def __init__(self, estimator: LightweightTokenEstimator | None = None) -> None:
+    def __init__(
+        self,
+        estimator: LightweightTokenEstimator | None = None,
+        protector: ContextProtector | None = None,
+    ) -> None:
         self._estimator = estimator or LightweightTokenEstimator()
+        self._protector = protector or ContextProtector()
         self._strategies = {
             OptimizationLevel.RAW: RawStrategy(),
             OptimizationLevel.LIGHT: LightStrategy(),
@@ -74,7 +80,8 @@ class ContextOptimizer:
             )
 
         estimated_before = self._estimator.estimate_messages(messages)
-        prepared = strategy.apply(messages)
+        protection_plan = self._protector.inspect(messages)
+        prepared = strategy.apply(messages, protection_plan)
         estimated_after = self._estimator.estimate_messages(prepared)
 
         return ContextResult(

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Final
 
+from .protection import ProtectionPlan
+
 
 MessageMapping = Mapping[str, str]
 PreparedMessage = dict[str, str]
@@ -13,7 +15,11 @@ PreparedMessage = dict[str, str]
 class RawStrategy:
     """Copy messages without changing their order or values."""
 
-    def apply(self, messages: Sequence[MessageMapping]) -> list[PreparedMessage]:
+    def apply(
+        self,
+        messages: Sequence[MessageMapping],
+        protection_plan: ProtectionPlan | None = None,
+    ) -> list[PreparedMessage]:
         return [dict(message) for message in messages]
 
 
@@ -35,48 +41,67 @@ class LightStrategy:
         self._short_message_limit = short_message_limit
         self._merged_message_limit = merged_message_limit
 
-    def apply(self, messages: Sequence[MessageMapping]) -> list[PreparedMessage]:
+    def apply(
+        self,
+        messages: Sequence[MessageMapping],
+        protection_plan: ProtectionPlan | None = None,
+    ) -> list[PreparedMessage]:
         prepared: list[PreparedMessage] = []
+        plan = protection_plan or ProtectionPlan()
+        pending_short_run: list[PreparedMessage] = []
 
-        for message in messages:
+        def flush_short_run() -> None:
+            if not pending_short_run:
+                return
+            combined_length = sum(
+                len(message["content"]) for message in pending_short_run
+            ) + 2 * (len(pending_short_run) - 1)
+            if len(pending_short_run) > 1 and combined_length <= self._merged_message_limit:
+                prepared.append(
+                    {
+                        "role": pending_short_run[0]["role"],
+                        "content": "\n\n".join(
+                            message["content"] for message in pending_short_run
+                        ),
+                    }
+                )
+            else:
+                prepared.extend(pending_short_run)
+            pending_short_run.clear()
+
+        for index, message in enumerate(messages):
             role = message.get("role", "")
             content = message.get("content", "")
             status = message.get("status", "").casefold()
+            protected = plan.protects(index)
+
+            if protected:
+                flush_short_run()
+                prepared.append({"role": role, "content": content})
+                continue
 
             if not role or not content.strip() or status in self._FAILED_STATUSES:
                 continue
 
             current = {"role": role, "content": content}
+            if self._is_short_merge_candidate(current):
+                if pending_short_run and pending_short_run[-1]["role"] != role:
+                    flush_short_run()
+                if pending_short_run and pending_short_run[-1] == current:
+                    continue
+                pending_short_run.append(current)
+                continue
+
+            flush_short_run()
             if prepared and prepared[-1] == current:
                 continue
-
-            if prepared and self._can_merge(prepared[-1], current):
-                prepared[-1]["content"] = (
-                    f"{prepared[-1]['content']}\n\n{current['content']}"
-                )
-                continue
-
             prepared.append(current)
 
+        flush_short_run()
         return prepared
 
-    def _can_merge(
-        self,
-        previous: PreparedMessage,
-        current: PreparedMessage,
-    ) -> bool:
-        if previous["role"] != current["role"]:
-            return False
-        if current["role"] not in self._MERGEABLE_ROLES:
-            return False
-
-        previous_content = previous["content"]
-        current_content = current["content"]
-        if "```" in previous_content or "```" in current_content:
-            return False
-        if (
-            len(previous_content) > self._short_message_limit
-            or len(current_content) > self._short_message_limit
-        ):
-            return False
-        return len(previous_content) + 2 + len(current_content) <= self._merged_message_limit
+    def _is_short_merge_candidate(self, message: PreparedMessage) -> bool:
+        return (
+            message["role"] in self._MERGEABLE_ROLES
+            and len(message["content"]) <= self._short_message_limit
+        )
