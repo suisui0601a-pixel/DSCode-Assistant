@@ -81,6 +81,7 @@ QFrame#composerCard { margin: 0; }
 QFrame#chatHeader { border-radius: 0; border-width: 0 0 1px 0; }
 QLabel#chatTitle { font-size: 17px; font-weight: 650; }
 QLabel#modelLabel { color: #747887; font-size: 12px; }
+QLabel#contextStatsLabel { color: #8a8e9c; font-size: 11px; }
 
 QLabel[status="ready"], QLabel[status="connected"] {
     color: #3f785f; background: #e8f3ed; border-radius: 9px; padding: 3px 9px;

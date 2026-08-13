@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 import dscode_assistant.chat_widget as chat_widget_module
+from dscode_assistant.context import ContextResult, OptimizationLevel
 from dscode_assistant.database import Database
 from dscode_assistant.diagnostics import (
     configure_exception_logging,
@@ -44,20 +45,24 @@ from dscode_assistant.ui_components import (
 
 
 class FakeSettings:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, context_mode: str | None = None) -> None:
         self._data_dir = data_dir
+        self._context_mode = context_mode
 
     def get_data_dir(self) -> Path:
         return self._data_dir
 
     def load(self) -> dict[str, str | int | float]:
-        return {
+        settings: dict[str, str | int | float] = {
             "model": "deepseek-v4-flash",
             "temperature": 0.7,
             "max_tokens": 256,
             "request_timeout": 10.0,
             "theme": "system",
         }
+        if self._context_mode is not None:
+            settings["context_optimization_mode"] = self._context_mode
+        return settings
 
     def save(self, _values: object) -> None:
         return
@@ -102,6 +107,28 @@ class FakeWorker(QObject):
 
     def wait(self, _timeout: int) -> bool:
         return True
+
+
+class CaptureContextOptimizer:
+    def __init__(self, before: int = 1, after: int = 1) -> None:
+        self.messages: list[dict[str, str]] | None = None
+        self.level: OptimizationLevel | None = None
+        self.before = before
+        self.after = after
+
+    def prepare(
+        self,
+        messages: list[dict[str, str]],
+        level: OptimizationLevel,
+    ) -> ContextResult:
+        self.messages = [dict(message) for message in messages]
+        self.level = level
+        return ContextResult(
+            messages=[dict(message) for message in messages],
+            level=level,
+            estimated_tokens_before=self.before,
+            estimated_tokens_after=self.after,
+        )
 
 
 class UISmokeTests(unittest.TestCase):
@@ -155,6 +182,106 @@ class UISmokeTests(unittest.TestCase):
             self.application.processEvents()
         finally:
             chat_widget_module.ChatWorker = original_worker
+
+    def test_send_prepares_raw_context_before_starting_worker(self) -> None:
+        original_worker = chat_widget_module.ChatWorker
+        chat_widget_module.ChatWorker = FakeWorker
+        try:
+            database = Database(self.settings)
+            window = MainWindow(database, self.settings)
+            window.new_chat()
+            optimizer = CaptureContextOptimizer()
+            window.chat_widget._context_optimizer = optimizer
+
+            window.chat_widget.set_draft_text("Keep the current request flow")
+            window.chat_widget.send_message()
+            self.application.processEvents()
+
+            worker = FakeWorker.last_instance
+            self.assertIsNotNone(worker)
+            self.assertEqual(optimizer.level, OptimizationLevel.RAW)
+            self.assertEqual(worker.messages, optimizer.messages)
+            self.assertEqual(
+                optimizer.messages[-1],
+                {"role": "user", "content": "Keep the current request flow"},
+            )
+
+            window.close()
+            self.application.processEvents()
+        finally:
+            chat_widget_module.ChatWorker = original_worker
+
+    def test_light_setting_optimizes_request_and_displays_token_statistics(self) -> None:
+        original_worker = chat_widget_module.ChatWorker
+        chat_widget_module.ChatWorker = FakeWorker
+        try:
+            settings = FakeSettings(
+                Path(self.temporary_directory.name),
+                context_mode="light",
+            )
+            database = Database(settings)
+            window = MainWindow(database, settings)
+            window.new_chat()
+            session_id = window.chat_widget.active_session_id
+            self.assertIsNotNone(session_id)
+            database.add_message(session_id, MessageRole.USER, "First detail")
+            database.add_message(session_id, MessageRole.USER, "Second detail")
+            session = next(
+                item for item in database.list_sessions() if item.id == session_id
+            )
+            window.chat_widget.set_session(session)
+
+            window.chat_widget.set_draft_text("Third detail")
+            window.chat_widget.send_message()
+            self.application.processEvents()
+
+            worker = FakeWorker.last_instance
+            self.assertIsNotNone(worker)
+            self.assertEqual(
+                worker.messages[-1],
+                {
+                    "role": "user",
+                    "content": "First detail\n\nSecond detail\n\nThird detail",
+                },
+            )
+            stats = window.chat_widget._context_stats_label.text()
+            self.assertIn("优化前估算 Token：", stats)
+            self.assertIn("优化后估算 Token：", stats)
+            self.assertIn("减少比例：", stats)
+            window.close()
+            self.application.processEvents()
+        finally:
+            chat_widget_module.ChatWorker = original_worker
+
+    def test_context_statistics_use_optimizer_result(self) -> None:
+        original_worker = chat_widget_module.ChatWorker
+        chat_widget_module.ChatWorker = FakeWorker
+        try:
+            database = Database(self.settings)
+            window = MainWindow(database, self.settings)
+            window.new_chat()
+            optimizer = CaptureContextOptimizer(before=100, after=75)
+            window.chat_widget._context_optimizer = optimizer
+            window.chat_widget.set_draft_text("Measure this request")
+            window.chat_widget.send_message()
+            self.application.processEvents()
+
+            self.assertEqual(
+                window.chat_widget._context_stats_label.text(),
+                "优化前估算 Token：100　优化后估算 Token：75　减少比例：25.0%",
+            )
+            window.close()
+            self.application.processEvents()
+        finally:
+            chat_widget_module.ChatWorker = original_worker
+
+    def test_auto_setting_is_reserved_and_currently_uses_raw(self) -> None:
+        self.assertEqual(
+            chat_widget_module.ChatWidget._context_level_from_settings(
+                {"context_optimization_mode": "auto"}
+            ),
+            OptimizationLevel.RAW,
+        )
 
     def test_chat_input_enter_and_shift_enter(self) -> None:
         editor = ChatInputEdit()

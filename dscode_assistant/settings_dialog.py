@@ -7,6 +7,7 @@ from typing import Any
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSpinBox,
     QStackedWidget,
@@ -34,11 +36,15 @@ from .model_providers import (
     OpenAICompatibleProvider,
 )
 from .settings import (
+    CONTEXT_OPTIMIZATION_AUTO,
+    CONTEXT_OPTIMIZATION_LIGHT,
+    CONTEXT_OPTIMIZATION_RAW,
     DEFAULT_SETTINGS,
     DEEPSEEK_PROVIDER_ID,
     OPENAI_COMPATIBLE_PROVIDER_ID,
     SettingsManager,
     get_active_model,
+    get_context_optimization_mode,
     get_provider_id,
 )
 from .ui_components import StatusBadge
@@ -144,6 +150,7 @@ class SettingsDialog(QDialog):
         content_layout.setSpacing(12)
         content_layout.addWidget(provider_group)
         content_layout.addWidget(model_group)
+        content_layout.addWidget(self._build_context_optimization_group(settings))
         content_layout.addWidget(self._build_appearance_group())
         content_layout.addWidget(self._build_data_group())
         content_layout.addWidget(self._build_advanced_group())
@@ -170,6 +177,39 @@ class SettingsDialog(QDialog):
         self._model_combo.currentTextChanged.connect(self._update_current_model)
         self._openai_model_input.textChanged.connect(self._update_current_model)
         self._provider_changed()
+
+    def _build_context_optimization_group(
+        self,
+        settings: dict[str, Any],
+    ) -> QGroupBox:
+        self._context_mode_group = QButtonGroup(self)
+        self._context_mode_buttons: dict[str, QRadioButton] = {}
+        choices = (
+            (CONTEXT_OPTIMIZATION_RAW, "原始模式 Raw（关闭优化）"),
+            (CONTEXT_OPTIMIZATION_LIGHT, "轻度优化 Light"),
+            (CONTEXT_OPTIMIZATION_AUTO, "自动模式 Auto（实验，仅预留）"),
+        )
+        layout = QVBoxLayout()
+        for mode, label in choices:
+            button = QRadioButton(label)
+            self._context_mode_group.addButton(button)
+            self._context_mode_buttons[mode] = button
+            layout.addWidget(button)
+
+        selected_mode = get_context_optimization_mode(settings)
+        self._context_mode_buttons[selected_mode].setChecked(True)
+        note = QLabel("上下文统计仅在本机计算，不会产生额外 API 请求。")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        group = QGroupBox("上下文优化")
+        group.setLayout(layout)
+        return group
+
+    def _selected_context_mode(self) -> str:
+        for mode, button in self._context_mode_buttons.items():
+            if button.isChecked():
+                return mode
+        return CONTEXT_OPTIMIZATION_RAW
 
     def _build_deepseek_page(self, settings: dict[str, Any]) -> QWidget:
         page = QWidget()
@@ -368,6 +408,7 @@ class SettingsDialog(QDialog):
                     "openai_compatible_model": compatible_model,
                     "temperature": self._temperature.value(),
                     "max_tokens": self._max_tokens.value(),
+                    "context_optimization_mode": self._selected_context_mode(),
                 }
             )
         except (OSError, RuntimeError, ValueError) as error:

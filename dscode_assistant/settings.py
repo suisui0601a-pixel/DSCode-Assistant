@@ -23,6 +23,14 @@ SUPPORTED_PROVIDER_IDS: Final = {
     DEEPSEEK_PROVIDER_ID,
     OPENAI_COMPATIBLE_PROVIDER_ID,
 }
+CONTEXT_OPTIMIZATION_RAW: Final = "raw"
+CONTEXT_OPTIMIZATION_LIGHT: Final = "light"
+CONTEXT_OPTIMIZATION_AUTO: Final = "auto"
+SUPPORTED_CONTEXT_OPTIMIZATION_MODES: Final = {
+    CONTEXT_OPTIMIZATION_RAW,
+    CONTEXT_OPTIMIZATION_LIGHT,
+    CONTEXT_OPTIMIZATION_AUTO,
+}
 
 DEFAULT_SETTINGS: Final[dict[str, str | int | float]] = {
     "provider": DEEPSEEK_PROVIDER_ID,
@@ -33,6 +41,7 @@ DEFAULT_SETTINGS: Final[dict[str, str | int | float]] = {
     "max_tokens": 4096,
     "request_timeout": 60.0,
     "theme": "system",
+    "context_optimization_mode": CONTEXT_OPTIMIZATION_RAW,
 }
 
 
@@ -178,6 +187,17 @@ def get_provider_id(settings: Mapping[str, Any]) -> str:
     if provider_id in SUPPORTED_PROVIDER_IDS:
         return str(provider_id)
     return DEEPSEEK_PROVIDER_ID
+
+
+def get_context_optimization_mode(settings: Mapping[str, Any]) -> str:
+    """Return a supported context mode, preserving Raw for legacy settings."""
+    mode = settings.get(
+        "context_optimization_mode",
+        CONTEXT_OPTIMIZATION_RAW,
+    )
+    if mode in SUPPORTED_CONTEXT_OPTIMIZATION_MODES:
+        return str(mode)
+    return CONTEXT_OPTIMIZATION_RAW
 
 
 def get_active_model(settings: Mapping[str, Any]) -> str:

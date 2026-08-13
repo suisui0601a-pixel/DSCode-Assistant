@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as delete_qt_object
 
 from .api_client import ChatWorker, DeepSeekClient
+from .context import ContextOptimizer, ContextResult, OptimizationLevel
 from .database import Database
 from .markdown_renderer import MarkdownRenderer
 from .model_providers import DeepSeekProvider, OpenAICompatibleProvider
@@ -28,9 +29,12 @@ from .models import (
 )
 from .prompts import PROMPT_TEMPLATES
 from .settings import (
+    CONTEXT_OPTIMIZATION_AUTO,
+    CONTEXT_OPTIMIZATION_LIGHT,
     OPENAI_COMPATIBLE_PROVIDER_ID,
     SettingsManager,
     get_active_model,
+    get_context_optimization_mode,
     get_provider_id,
     is_provider_configured,
 )
@@ -51,6 +55,7 @@ class ChatWidget(QWidget):
         self._database = database
         self._settings_manager = settings_manager
         self._renderer = MarkdownRenderer()
+        self._context_optimizer = ContextOptimizer()
         self._session: ChatSession | None = None
         self._messages: list[ChatMessage] = []
         self._worker: ChatWorker | None = None
@@ -62,6 +67,8 @@ class ChatWidget(QWidget):
         self._title_label.setObjectName("chatTitle")
         self._model_label = QLabel("未选择模型")
         self._model_label.setObjectName("modelLabel")
+        self._context_stats_label = QLabel("上下文：尚未估算")
+        self._context_stats_label.setObjectName("contextStatsLabel")
         self._status_badge = StatusBadge("就绪", "ready")
 
         self._message_canvas = QWidget()
@@ -99,6 +106,7 @@ class ChatWidget(QWidget):
         title_column.setSpacing(2)
         title_column.addWidget(self._title_label)
         title_column.addWidget(self._model_label)
+        title_column.addWidget(self._context_stats_label)
 
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(24, 14, 24, 14)
@@ -178,7 +186,13 @@ class ChatWidget(QWidget):
         self._messages.append(user_message)
         self._input.clear()
 
-        request_messages = self._build_request_messages()
+        raw_request_messages = self._build_request_messages()
+        context_result = self._context_optimizer.prepare(
+            raw_request_messages,
+            self._context_level_from_settings(settings),
+        )
+        self._show_context_statistics(context_result)
+        request_messages = context_result.messages
         assistant_message = self._database.add_message(
             self._session.id,
             MessageRole.ASSISTANT,
@@ -214,6 +228,28 @@ class ChatWidget(QWidget):
         self._worker = worker
         self._set_generating(True)
         worker.start()
+
+    @staticmethod
+    def _context_level_from_settings(
+        settings: dict[str, str | int | float],
+    ) -> OptimizationLevel:
+        mode = get_context_optimization_mode(settings)
+        if mode == CONTEXT_OPTIMIZATION_LIGHT:
+            return OptimizationLevel.LIGHT
+        # Auto is configuration-only in this phase and intentionally behaves as Raw.
+        if mode == CONTEXT_OPTIMIZATION_AUTO:
+            return OptimizationLevel.RAW
+        return OptimizationLevel.RAW
+
+    def _show_context_statistics(self, result: ContextResult) -> None:
+        before = result.estimated_tokens_before
+        after = result.estimated_tokens_after
+        reduction = result.estimated_reduction_percent
+        self._context_stats_label.setText(
+            f"优化前估算 Token：{before}　"
+            f"优化后估算 Token：{after}　"
+            f"减少比例：{reduction:.1f}%"
+        )
 
     def _build_request_messages(self) -> list[dict[str, str]]:
         prompt = PROMPT_TEMPLATES[self.current_prompt_id()]

@@ -45,6 +45,7 @@ class ProviderFakeSettings:
             "max_tokens": 256,
             "request_timeout": 10.0,
             "theme": "system",
+            "context_optimization_mode": "raw",
         }
         if values:
             self.values.update(values)
@@ -178,6 +179,7 @@ class ProviderSettingsUITests(unittest.TestCase):
                 dialog._openai_base_url.setText("https://models.example/v1")
                 dialog._openai_api_key_input.setText("new-compatible-key")
                 dialog._openai_model_input.setText("coder-model")
+                dialog._context_mode_buttons["light"].setChecked(True)
                 self.application.processEvents()
 
                 self.assertEqual(dialog._provider_stack.currentIndex(), 1)
@@ -201,6 +203,7 @@ class ProviderSettingsUITests(unittest.TestCase):
                     "https://models.example/v1",
                 )
                 self.assertEqual(settings.keys[OPENAI_COMPATIBLE_PROVIDER_ID], "new-compatible-key")
+                self.assertEqual(settings.values["context_optimization_mode"], "light")
             finally:
                 dialog.close()
 
