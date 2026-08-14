@@ -10,8 +10,8 @@ set "APP_VERSION=0.1.0"
 set "RELEASE_ROOT=release"
 set "VERSION_DIR=%RELEASE_ROOT%\v%APP_VERSION%"
 set "PORTABLE_DIR=%VERSION_DIR%\portable"
-set "PORTABLE_ARCHIVE=%RELEASE_ROOT%\DSCode v%APP_VERSION% Portable.zip"
-set "INSTALLER_PATH=%RELEASE_ROOT%\DSCode v%APP_VERSION%.exe"
+set "PORTABLE_ARCHIVE=%RELEASE_ROOT%\DSCode Assistant v%APP_VERSION% Portable.zip"
+set "INSTALLER_PATH=%RELEASE_ROOT%\DSCode Assistant Setup v%APP_VERSION%.exe"
 
 echo [1/6] Preparing isolated build environment...
 if not exist "%BUILD_VENV%\Scripts\python.exe" (
@@ -75,8 +75,23 @@ mkdir "%PORTABLE_DIR%"
 xcopy "dist\DSCode Assistant\*" "%PORTABLE_DIR%\" /E /I /Y >nul
 if errorlevel 1 goto :fail
 
+copy /Y "LICENSE" "%PORTABLE_DIR%\LICENSE.txt" >nul
+if errorlevel 1 goto :fail
+copy /Y "docs\Windows_User_Guide.md" "%PORTABLE_DIR%\Windows_User_Guide.md" >nul
+if errorlevel 1 goto :fail
+
 if not exist "%PORTABLE_DIR%\DSCode Assistant.exe" (
     echo Build failed: %PORTABLE_DIR%\DSCode Assistant.exe was not created.
+    goto :fail
+)
+
+if not exist "%PORTABLE_DIR%\_internal\assets\light.qss" (
+    echo Build failed: the bundled stylesheet was not created.
+    goto :fail
+)
+
+if not exist "%PORTABLE_DIR%\_internal\assets\icon.ico" (
+    echo Build failed: the bundled application icon was not created.
     goto :fail
 )
 

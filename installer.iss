@@ -6,20 +6,38 @@
   #define BuildSource "release\v0.1.0\portable"
 #endif
 
-#define AppName "DSCode Assistant"
+#ifndef AppIdValue
+  #define AppIdValue "{{A0C1C76D-C1A1-40BE-BE30-315E26D7AE8D}"
+#endif
+
+#ifndef AppName
+  #define AppName "DSCode Assistant"
+#endif
+
+#ifndef OutputDirectory
+  #define OutputDirectory "release"
+#endif
+
+#ifndef OutputFilename
+  #define OutputFilename "DSCode Assistant Setup v" + AppVersion
+#endif
+
 #define AppPublisher "DSCode Assistant Contributors"
 #define AppExeName "DSCode Assistant.exe"
 
 [Setup]
-AppId={{A0C1C76D-C1A1-40BE-BE30-315E26D7AE8D}
+AppId={#AppIdValue}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+AppPublisherURL=https://github.com/suisui0601a-pixel/DSCode-Assistant
+AppSupportURL=https://github.com/suisui0601a-pixel/DSCode-Assistant/issues
+AppUpdatesURL=https://github.com/suisui0601a-pixel/DSCode-Assistant/releases
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
-OutputDir=release
-OutputBaseFilename=DSCode v{#AppVersion}
+OutputDir={#OutputDirectory}
+OutputBaseFilename={#OutputFilename}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2
@@ -31,6 +49,11 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
 LicenseFile=LICENSE
+VersionInfoVersion={#AppVersion}.0
+VersionInfoCompany={#AppPublisher}
+VersionInfoDescription={#AppName} Windows Installer
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#AppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
