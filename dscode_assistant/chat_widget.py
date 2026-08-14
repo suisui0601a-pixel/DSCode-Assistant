@@ -38,7 +38,12 @@ from .settings import (
     get_provider_id,
     is_provider_configured,
 )
-from .ui_components import ChatInputWidget, MessageBubble, StatusBadge
+from .ui_components import (
+    ChatInputWidget,
+    ContextStatsWidget,
+    MessageBubble,
+    StatusBadge,
+)
 
 
 class ChatWidget(QWidget):
@@ -72,8 +77,7 @@ class ChatWidget(QWidget):
         self._title_label.setObjectName("chatTitle")
         self._model_label = QLabel("未选择模型")
         self._model_label.setObjectName("modelLabel")
-        self._context_stats_label = QLabel("上下文：尚未估算")
-        self._context_stats_label.setObjectName("contextStatsLabel")
+        self._context_stats_widget = ContextStatsWidget()
         self._status_badge = StatusBadge("就绪", "ready")
 
         self._message_canvas = QWidget()
@@ -111,7 +115,7 @@ class ChatWidget(QWidget):
         title_column.setSpacing(2)
         title_column.addWidget(self._title_label)
         title_column.addWidget(self._model_label)
-        title_column.addWidget(self._context_stats_label)
+        title_column.addWidget(self._context_stats_widget)
 
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(24, 14, 24, 14)
@@ -157,6 +161,7 @@ class ChatWidget(QWidget):
         self._session = session
         self._messages = self._database.get_messages(session.id or 0)
         self._assistant_message = None
+        self._reset_context_statistics()
         self._title_label.setText(session.title)
         self._model_label.setText(session.model)
         self._status_badge.set_status("就绪", "ready")
@@ -192,11 +197,12 @@ class ChatWidget(QWidget):
         self._input.clear()
 
         raw_request_messages = self._build_request_messages()
+        context_mode = get_context_optimization_mode(settings)
         context_result = self._context_optimizer.prepare(
             raw_request_messages,
             self._context_level_from_settings(settings),
         )
-        self._show_context_statistics(context_result)
+        self._show_context_statistics(context_result, context_mode)
         request_messages = context_result.messages
         assistant_message = self._database.add_message(
             self._session.id,
@@ -246,15 +252,25 @@ class ChatWidget(QWidget):
             return OptimizationLevel.RAW
         return OptimizationLevel.RAW
 
-    def _show_context_statistics(self, result: ContextResult) -> None:
-        before = result.estimated_tokens_before
-        after = result.estimated_tokens_after
-        reduction = result.estimated_reduction_percent
-        self._context_stats_label.setText(
-            f"优化前估算 Token：{before}　"
-            f"优化后估算 Token：{after}　"
-            f"减少比例：{reduction:.1f}%"
+    def _show_context_statistics(
+        self,
+        result: ContextResult,
+        configured_mode: str,
+    ) -> None:
+        self._context_stats_widget.set_mode(
+            result.level,
+            auto_requested=configured_mode == CONTEXT_OPTIMIZATION_AUTO,
         )
+        self._context_stats_widget.update_result(result)
+
+    def _reset_context_statistics(self) -> None:
+        settings = self._settings_manager.load()
+        configured_mode = get_context_optimization_mode(settings)
+        self._context_stats_widget.set_mode(
+            self._context_level_from_settings(settings),
+            auto_requested=configured_mode == CONTEXT_OPTIMIZATION_AUTO,
+        )
+        self._context_stats_widget.reset()
 
     def _build_request_messages(self) -> list[dict[str, str]]:
         prompt = PROMPT_TEMPLATES[self.current_prompt_id()]

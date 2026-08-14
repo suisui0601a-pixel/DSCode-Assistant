@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import delete as delete_qt_object
 
+from .context import ContextResult, OptimizationLevel
 from .markdown_renderer import MarkdownRenderer
 from .models import ChatMessage, MessageRole, MessageStatus
 from .prompts import PROMPT_TEMPLATES
@@ -43,6 +44,128 @@ class StatusBadge(QLabel):
         self.setProperty("status", status)
         self.style().unpolish(self)
         self.style().polish(self)
+
+
+class ContextStatsWidget(QWidget):
+    """Display transient, content-free context optimization statistics."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("contextStatsWidget")
+        self._mode = OptimizationLevel.RAW
+        self._auto_requested = False
+        self._has_result = False
+        self._estimated_before = 0
+        self._estimated_after = 0
+        self._reduction_percent = 0.0
+        self._protected_message_count = 0
+        self._skipped_optimization_count = 0
+        self._reason_counts: tuple[tuple[str, int], ...] = ()
+
+        self._summary = QLabel()
+        self._summary.setObjectName("contextStatsSummary")
+        self._details = QLabel()
+        self._details.setObjectName("contextStatsDetails")
+        self._details.setWordWrap(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        layout.addWidget(self._summary)
+        layout.addWidget(self._details)
+
+        self._render()
+
+    @property
+    def summary_text(self) -> str:
+        return self._summary.text()
+
+    @property
+    def details_text(self) -> str:
+        return self._details.text()
+
+    def update_result(self, result: ContextResult) -> None:
+        """Show one request result without retaining earlier statistics."""
+        self._has_result = True
+        self._mode = OptimizationLevel(result.level)
+        self._estimated_before = result.estimated_tokens_before
+        self._estimated_after = result.estimated_tokens_after
+        self._reduction_percent = result.estimated_reduction_percent
+        self._protected_message_count = result.protection.protected_message_count
+        self._skipped_optimization_count = (
+            result.protection.skipped_optimization_count
+        )
+        self._reason_counts = tuple(
+            (item.reason.name, item.count)
+            for item in result.protection.reason_counts
+        )
+        if self._mode != OptimizationLevel.RAW:
+            self._auto_requested = False
+        self._render()
+
+    def reset(self) -> None:
+        """Clear the current request statistics while preserving mode display."""
+        self._has_result = False
+        self._estimated_before = 0
+        self._estimated_after = 0
+        self._reduction_percent = 0.0
+        self._protected_message_count = 0
+        self._skipped_optimization_count = 0
+        self._reason_counts = ()
+        self._render()
+
+    def set_mode(
+        self,
+        level: OptimizationLevel,
+        *,
+        auto_requested: bool = False,
+    ) -> None:
+        """Set the displayed mode, including the reserved Auto presentation."""
+        self._mode = OptimizationLevel(level)
+        self._auto_requested = bool(auto_requested)
+        self._render()
+
+    def _render(self) -> None:
+        if self._auto_requested:
+            summary = "Auto · 实验模式，当前按 Raw"
+        elif self._mode == OptimizationLevel.RAW:
+            summary = "Raw · 未优化"
+        elif not self._has_result:
+            summary = f"{self._mode.name.title()} · 尚未统计"
+        else:
+            summary = (
+                f"{self._mode.name.title()} · "
+                f"Token {self._estimated_before} → "
+                f"{self._estimated_after} · "
+                f"减少 {self._reduction_percent:.1f}%"
+            )
+        self._summary.setText(summary)
+
+        if not self._has_result:
+            self._details.clear()
+            self._details.hide()
+            return
+
+        token_detail = (
+            f"优化前 Token {self._estimated_before} · "
+            f"优化后 Token {self._estimated_after} · "
+            f"减少比例 {self._reduction_percent:.1f}%"
+        )
+        protection_detail = (
+            f"保护 {self._protected_message_count} 条消息 · "
+            f"跳过优化 {self._skipped_optimization_count} 条"
+        )
+        if self._reason_counts:
+            reason_detail = "保护原因：" + " · ".join(
+                f"{reason_name} {count}"
+                for reason_name, count in self._reason_counts
+            )
+        else:
+            reason_detail = "保护原因：无"
+        self._details.setText(
+            f"{token_detail}\n{protection_detail}\n{reason_detail}"
+        )
+        self._details.show()
 
 
 class ConversationItem(QWidget):

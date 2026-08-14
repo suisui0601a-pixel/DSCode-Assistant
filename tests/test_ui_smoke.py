@@ -23,7 +23,13 @@ from PySide6.QtWidgets import (
 )
 
 import dscode_assistant.chat_widget as chat_widget_module
-from dscode_assistant.context import ContextResult, OptimizationLevel
+from dscode_assistant.context import (
+    ContextResult,
+    OptimizationLevel,
+    ProtectionReason,
+    ProtectionReasonCount,
+    ProtectionResult,
+)
 from dscode_assistant.database import Database
 from dscode_assistant.diagnostics import (
     configure_exception_logging,
@@ -39,6 +45,7 @@ from dscode_assistant import __version__
 from dscode_assistant.ui_components import (
     ChatInputEdit,
     CodeBlockWidget,
+    ContextStatsWidget,
     MessageBubble,
     WelcomeWidget,
 )
@@ -142,6 +149,88 @@ class UISmokeTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    @staticmethod
+    def _context_result(
+        level: OptimizationLevel = OptimizationLevel.LIGHT,
+    ) -> ContextResult:
+        return ContextResult(
+            messages=[{"role": "user", "content": "hidden from statistics"}],
+            level=level,
+            estimated_tokens_before=200,
+            estimated_tokens_after=150 if level == OptimizationLevel.LIGHT else 200,
+            protection=ProtectionResult(
+                protected_message_count=3,
+                reason_counts=(
+                    ProtectionReasonCount(ProtectionReason.CURRENT_TASK, 1),
+                    ProtectionReasonCount(ProtectionReason.CODE_BLOCK, 2),
+                ),
+                skipped_optimization_count=2,
+            ),
+        )
+
+    def test_context_stats_widget_initializes_without_request_data(self) -> None:
+        widget = ContextStatsWidget()
+
+        self.assertEqual(widget.summary_text, "Raw · 未优化")
+        self.assertEqual(widget.details_text, "")
+
+    def test_context_stats_widget_updates_from_context_result(self) -> None:
+        widget = ContextStatsWidget()
+        widget.update_result(self._context_result())
+
+        self.assertIn("Token 200 → 150", widget.summary_text)
+        self.assertIn("减少 25.0%", widget.summary_text)
+        self.assertIn("保护 3 条消息", widget.details_text)
+        self.assertIn("跳过优化 2 条", widget.details_text)
+
+    def test_context_stats_widget_displays_raw_mode(self) -> None:
+        widget = ContextStatsWidget()
+        widget.set_mode(OptimizationLevel.RAW)
+        widget.update_result(self._context_result(OptimizationLevel.RAW))
+
+        self.assertEqual(widget.summary_text, "Raw · 未优化")
+        self.assertIn("优化前 Token 200", widget.details_text)
+        self.assertIn("优化后 Token 200", widget.details_text)
+
+    def test_context_stats_widget_displays_light_protection_reasons(self) -> None:
+        widget = ContextStatsWidget()
+        widget.set_mode(OptimizationLevel.LIGHT)
+        widget.update_result(self._context_result())
+
+        self.assertTrue(widget.summary_text.startswith("Light ·"))
+        self.assertIn("CURRENT_TASK 1", widget.details_text)
+        self.assertIn("CODE_BLOCK 2", widget.details_text)
+        self.assertNotIn("hidden from statistics", widget.details_text)
+
+    def test_context_stats_widget_reset_clears_request_statistics(self) -> None:
+        widget = ContextStatsWidget()
+        widget.update_result(self._context_result())
+        widget.reset()
+
+        self.assertEqual(widget.summary_text, "Light · 尚未统计")
+        self.assertEqual(widget.details_text, "")
+
+    def test_context_stats_widget_displays_reserved_auto_mode(self) -> None:
+        widget = ContextStatsWidget()
+        widget.set_mode(OptimizationLevel.RAW, auto_requested=True)
+        widget.update_result(self._context_result(OptimizationLevel.RAW))
+
+        self.assertEqual(widget.summary_text, "Auto · 实验模式，当前按 Raw")
+
+    def test_switching_sessions_clears_context_statistics(self) -> None:
+        window = MainWindow(Database(self.settings), self.settings)
+        window.new_chat()
+        stats = window.chat_widget._context_stats_widget
+        stats.update_result(self._context_result())
+        self.assertNotEqual(stats.details_text, "")
+
+        window.new_chat()
+
+        self.assertEqual(stats.summary_text, "Raw · 未优化")
+        self.assertEqual(stats.details_text, "")
+        window.close()
+        self.application.processEvents()
 
     def test_main_window_starts_on_welcome_and_closes(self) -> None:
         window = MainWindow(Database(self.settings), self.settings)
@@ -260,10 +349,11 @@ class UISmokeTests(unittest.TestCase):
                 {"role": "user", "content": "Third detail"},
                 ],
             )
-            stats = window.chat_widget._context_stats_label.text()
-            self.assertIn("优化前估算 Token：", stats)
-            self.assertIn("优化后估算 Token：", stats)
-            self.assertIn("减少比例：", stats)
+            stats = window.chat_widget._context_stats_widget
+            self.assertIn("Light · Token", stats.summary_text)
+            self.assertIn("优化前 Token", stats.details_text)
+            self.assertIn("优化后 Token", stats.details_text)
+            self.assertIn("减少比例", stats.details_text)
             window.close()
             self.application.processEvents()
         finally:
@@ -282,10 +372,11 @@ class UISmokeTests(unittest.TestCase):
             window.chat_widget.send_message()
             self.application.processEvents()
 
-            self.assertEqual(
-                window.chat_widget._context_stats_label.text(),
-                "优化前估算 Token：100　优化后估算 Token：75　减少比例：25.0%",
-            )
+            stats = window.chat_widget._context_stats_widget
+            self.assertEqual(stats.summary_text, "Raw · 未优化")
+            self.assertIn("优化前 Token 100", stats.details_text)
+            self.assertIn("优化后 Token 75", stats.details_text)
+            self.assertIn("减少比例 25.0%", stats.details_text)
             window.close()
             self.application.processEvents()
         finally:
