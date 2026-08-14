@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
 from .automation import AUTOMATION_PORT, AutomationBridge, AutomationServer
+from .context import ContextOptimizer, ContextProtector
 from .database import Database
 from .diagnostics import (
     configure_exception_logging,
@@ -19,6 +20,7 @@ from .diagnostics import (
     shutdown_exception_logging,
 )
 from .main_window import MainWindow
+from .languages import LanguageDetector
 from .settings import SettingsManager
 
 
@@ -46,6 +48,13 @@ def _show_unhandled_exception(
         pass
 
 
+def _build_context_optimizer() -> ContextOptimizer:
+    """Assemble the language-aware local context preparation pipeline."""
+    language_detector = LanguageDetector()
+    context_protector = ContextProtector(language_detector=language_detector)
+    return ContextOptimizer(protector=context_protector)
+
+
 def main() -> int:
     """Initialize and run the DSCode Assistant desktop application."""
     application = QApplication.instance() or QApplication(sys.argv)
@@ -67,7 +76,11 @@ def main() -> int:
     database = Database(settings_manager)
     try:
         database.initialize()
-        window = MainWindow(database, settings_manager)
+        window = MainWindow(
+            database,
+            settings_manager,
+            context_optimizer=_build_context_optimizer(),
+        )
     except (OSError, sqlite3.Error) as error:
         record_exception(type(error), error.__traceback__)
         database.close()

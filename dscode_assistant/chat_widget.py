@@ -50,12 +50,17 @@ class ChatWidget(QWidget):
         self,
         database: Database,
         settings_manager: SettingsManager,
+        context_optimizer: ContextOptimizer | None = None,
     ) -> None:
         super().__init__()
         self._database = database
         self._settings_manager = settings_manager
         self._renderer = MarkdownRenderer()
-        self._context_optimizer = ContextOptimizer()
+        self._context_optimizer = (
+            context_optimizer
+            if context_optimizer is not None
+            else ContextOptimizer()
+        )
         self._session: ChatSession | None = None
         self._messages: list[ChatMessage] = []
         self._worker: ChatWorker | None = None

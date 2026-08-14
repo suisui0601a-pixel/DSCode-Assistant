@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from .chat_widget import ChatWidget
 from .about_dialog import AboutDialog
 from .automation import AutomationRequest
+from .context import ContextOptimizer
 from .database import Database
 from .settings import (
     OPENAI_COMPATIBLE_PROVIDER_ID,
@@ -53,6 +54,7 @@ class MainWindow(QMainWindow):
         self,
         database: Database | None = None,
         settings_manager: SettingsManager | None = None,
+        context_optimizer: ContextOptimizer | None = None,
     ) -> None:
         super().__init__()
         self._settings_manager = settings_manager or SettingsManager()
@@ -89,7 +91,11 @@ class MainWindow(QMainWindow):
         self._api_badge = StatusBadge()
         self._update_api_status()
 
-        self._chat_widget = ChatWidget(self._database, self._settings_manager)
+        self._chat_widget = ChatWidget(
+            self._database,
+            self._settings_manager,
+            context_optimizer=context_optimizer,
+        )
         self._chat_widget.history_changed.connect(self.refresh_history)
 
         self._welcome_widget = WelcomeWidget(

@@ -157,6 +157,19 @@ class UISmokeTests(unittest.TestCase):
         self.application.processEvents()
         self.assertFalse(window.isVisible())
 
+    def test_main_window_passes_injected_context_optimizer_to_chat(self) -> None:
+        optimizer = CaptureContextOptimizer()
+        window = MainWindow(
+            Database(self.settings),
+            self.settings,
+            context_optimizer=optimizer,
+        )
+
+        self.assertIs(window.chat_widget._context_optimizer, optimizer)
+
+        window.close()
+        self.application.processEvents()
+
     def test_send_button_starts_chat_worker(self) -> None:
         original_worker = chat_widget_module.ChatWorker
         chat_widget_module.ChatWorker = FakeWorker
