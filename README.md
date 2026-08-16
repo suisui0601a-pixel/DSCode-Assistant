@@ -1,53 +1,125 @@
 # DSCode Assistant
 
-DSCode Assistant 是一款开源、免费、本地优先的桌面 AI 编程助手。应用使用 Python 与 PySide6 开发，默认由用户电脑直接连接 DeepSeek 官方 API，也可连接 OpenAI Compatible 接口。
+> A local-first open-source AI coding assistant for developers, students, and small teams.
 
-项目不提供开发者服务器，不建立用户账号，不收集遥测数据，不上传 API Key。聊天记录和普通设置仅保存在用户电脑；只有用户主动发送的当前会话上下文会提交给所选模型服务。
+[简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [License](LICENSE)
 
-当前公开版本：`v0.1.0`
+DSCode Assistant is a local-first open-source AI coding assistant built with Python and PySide6. The desktop client connects directly from the user's computer to a configured model provider and does not require a DSCode account, a developer-operated relay server, or telemetry collection.
 
-## 功能列表
+Current public version: **v0.6.0**
 
-- DeepSeek 流式聊天、停止生成和错误提示
-- Markdown 渲染、代码高亮、代码与消息复制
-- Python、FastAPI、Debug、代码优化、代码解释、SQL、算法等提示模板
-- SQLite 本地会话历史、搜索、重命名与删除
-- 使用操作系统凭据库保存 API Key
-- DeepSeek 与 OpenAI Compatible 提供商配置
-- 模型、Temperature、Max Tokens 设置
-- 仅监听 `127.0.0.1` 的本地 Automation 接口
-- Windows 便携版与安装包构建流程
+## Project Introduction
 
-## 隐私与安全
+DSCode Assistant provides a focused desktop workflow for programming conversations while keeping application data under the user's control. API credentials are stored through the operating system credential store, ordinary settings are local JSON, and chat history is stored in a local SQLite database.
 
-- API Key 由 `keyring` 写入操作系统凭据库，不写入 `settings.json` 或 SQLite。
-- Windows 用户数据目录为 `%APPDATA%\DSCodeAssistant`。
-- 项目没有账号系统、开发者服务器、遥测、统计或数据回传功能。
-- 隐私安全异常日志不记录聊天正文、API Key、请求体或异常原文。
-- DeepSeek 模式只访问 `https://api.deepseek.com`；OpenAI Compatible 模式访问用户自行配置的 Base URL。
+Only the conversation context that the user sends is transmitted to the selected model provider. Users remain responsible for reviewing the provider's privacy policy, retention rules, and pricing.
 
-使用第三方或自建模型服务时，请自行确认其隐私政策、网络边界和计费规则。
+## Features
 
-## 安装方式
+- Streaming AI chat with stop-generation support and user-facing error messages
+- Markdown rendering, syntax-highlighted code blocks, and copy actions
+- Local SQLite conversation history with search, rename, and delete operations
+- API keys stored with the operating system credential store through `keyring`
+- Multi-provider architecture with DeepSeek and OpenAI-compatible providers
+- Provider, model, Temperature, Max Tokens, and timeout configuration
+- Raw and deterministic Light context-optimization modes
+- Local token estimates and context-protection statistics for the current request
+- Built-in programming prompt templates
+- A localhost-only Automation interface for activating the application and creating task drafts
+- Windows portable and installer build workflows
 
-### Windows 安装版
+## Architecture Overview
 
-1. 从 GitHub Release 下载 `DSCode v0.1.0.exe`。
-2. 运行安装程序并选择安装目录。
-3. 按需创建桌面快捷方式。
-4. 启动应用并完成模型配置。
+```mermaid
+flowchart TD
+    U[User] --> GUI[PySide6 Desktop UI]
+    GUI --> CHAT[Chat and Session Layer]
+    CHAT --> CTX[Context Preparation]
+    CTX --> WORKER[ChatWorker]
+    WORKER --> PROVIDERS[Provider Layer]
+    PROVIDERS --> DS[DeepSeek API]
+    PROVIDERS --> OA[OpenAI-compatible API]
+    CHAT --> DB[(Local SQLite)]
+    GUI --> SETTINGS[Local Settings]
+    SETTINGS --> KEYRING[OS Credential Store]
+```
 
-### Windows 便携版
+The application has no DSCode-operated cloud backend. `ChatWorker` performs provider requests outside the GUI thread, while session data and settings remain local.
 
-1. 下载 `DSCode v0.1.0 Portable.zip`。
-2. 解压完整目录。
-3. 运行 `DSCode Assistant.exe`。
+## Supported Providers
 
-请保留便携目录中的 `_internal` 文件夹，不要只复制 EXE。
+### DeepSeek
 
-### 从源码运行
+The built-in `DeepSeekProvider` wraps the existing DeepSeek API client and supports streaming responses. In this mode, requests are sent directly to the official DeepSeek API endpoint.
 
-需要 Python 3.11 或更高版本：
+### OpenAI-compatible provider
+
+The `OpenAICompatibleProvider` supports configurable HTTP or HTTPS base URLs that expose compatible `/models` and `/chat/completions` endpoints. This can be used with a compatible hosted service or a locally operated endpoint.
+
+DSCode Assistant does not claim compatibility with every implementation. Provider-specific parameters and response extensions may differ.
+
+## Context Optimization
+
+Context Optimization is the main public addition in v0.6.0. It prepares the existing conversation locally before it is passed to `ChatWorker` and the selected provider.
+
+Available modes:
+
+- **Raw**: copies the current request messages without changing their order or content.
+- **Light**: applies deterministic cleanup. It removes empty or invalid placeholder messages, removes exact consecutive duplicates where safe, and merges short consecutive messages from the same role within fixed limits.
+- **Auto (experimental placeholder)**: the setting is preserved for compatibility, but v0.6.0 currently processes it as Raw.
+
+Light mode protects critical messages from deletion, deduplication, merging, or rewriting. Protected content includes system instructions, the current task, the latest valid assistant response, code fences, patches, error logs, explicit constraints, and file references. Language detection can add local hints for supported programming-language error patterns.
+
+Important boundaries:
+
+- Context preparation is local and deterministic.
+- It does not call another model or create an additional API request.
+- It does not summarize or semantically rewrite source code.
+- Token counts shown in the UI are local estimates, not provider billing records.
+- Reduction depends on the actual conversation; no fixed savings percentage is promised.
+
+## Privacy Design
+
+- No mandatory account system
+- No DSCode-operated relay or data-collection server
+- No telemetry or usage analytics
+- API keys are not written to `settings.json` or SQLite
+- Chat history and ordinary settings remain on the user's computer
+- Privacy-safe diagnostics do not record chat content, API keys, request bodies, or raw exception text
+- DeepSeek mode accesses the official DeepSeek API; OpenAI-compatible mode accesses the base URL configured by the user
+- The local Automation interface listens only on `127.0.0.1`
+
+On Windows, application data is stored under `%APPDATA%\DSCodeAssistant`.
+
+## Screenshots
+
+Sanitized project screenshots are planned for the following locations:
+
+- `docs/images/main-window.png`
+- `docs/images/settings.png`
+
+The repository does not currently ship screenshots because no reviewed, privacy-safe screenshots are available. See [docs/images/README.md](docs/images/README.md) before contributing images.
+
+## Installation Guide
+
+### Windows installer
+
+1. Download `DSCode Assistant Setup v0.6.0.exe` from the GitHub Release.
+2. Run the installer and choose an installation directory.
+3. Optionally create a desktop shortcut.
+4. Start DSCode Assistant and configure a provider.
+
+### Windows portable package
+
+1. Download `DSCode Assistant v0.6.0 Portable.zip`.
+2. Extract the complete archive.
+3. Run `DSCode Assistant.exe`.
+
+Keep the packaged `_internal` directory next to the executable.
+
+### Run from source
+
+Python 3.11 or later is required.
 
 ```powershell
 git clone https://github.com/suisui0601a-pixel/DSCode-Assistant.git
@@ -59,98 +131,92 @@ python -m pip install -r requirements.txt
 python -m dscode_assistant
 ```
 
-macOS 与 Linux 可使用对应平台的虚拟环境激活命令。当前发布包以 Windows 为主，源码运行仍需系统具备 Qt/PySide6 所需图形环境。
+On macOS or Linux, use the platform-appropriate virtual-environment activation command. Prebuilt releases currently focus on Windows; source execution still requires a working Qt/PySide6 desktop environment.
 
-## 使用方式
+## Configuration Guide
 
-1. 打开“设置”。
-2. 选择模型提供商。
-3. DeepSeek 用户填写自己的 API Key；OpenAI Compatible 用户填写 Base URL、API Key（如需要）和模型名。
-4. 测试连接并保存设置。
-5. 新建会话，选择提示模板并发送编程问题。
-6. 历史会话会自动保存在本机 SQLite 数据库中。
+1. Open **Settings**.
+2. Select **DeepSeek** or **OpenAI Compatible**.
+3. Configure the API key and model. OpenAI-compatible users must also configure the Base URL.
+4. Choose Temperature, Max Tokens, timeout, and Context Optimization mode.
+5. Test the connection and save the settings.
+6. Create a conversation and send a programming question.
 
-详细步骤参见 [用户使用说明](docs/用户使用说明.md)。
+For OpenAI-compatible local endpoints, the API key may be left empty when the endpoint does not require authentication. Never place real credentials in source files, Issues, screenshots, or logs.
 
-## 配置说明
+Additional guides:
 
-### DeepSeek
+- [API configuration](docs/API_Configuration.md)
+- [User guide](docs/User_Guide.md)
+- [Windows guide](docs/Windows_User_Guide.md)
+- [FAQ](docs/FAQ.md)
 
-请在 [DeepSeek 开放平台](https://platform.deepseek.com/) 创建 API Key。软件不会附带公共 Key，也不会通过开发者服务器中转请求。
+## Local Automation Interface
 
-### OpenAI Compatible
+While the application is running, a small JSON interface is available at `127.0.0.1:18765` for local activation, project selection, status queries, and task-draft creation.
 
-设置页支持自定义 Base URL、API Key 和 Model Name。Base URL 应包含兼容接口所需的版本路径，例如 `http://127.0.0.1:11434/v1`。本机无鉴权服务可以留空 API Key。
+This interface does not execute an autonomous agent and does not call a model automatically.
 
-更多说明参见 [API 配置说明](docs/API配置说明.md)。
-
-## 本地 Automation 接口
-
-应用启动后在 `127.0.0.1:18765` 提供本机 JSON 接口，用于激活窗口、选择项目和创建待确认的任务草稿。该接口不监听局域网地址，不执行 Agent 逻辑，也不会自动调用模型 API。
-
-| 方法 | 路径 | 作用 |
+| Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/v1/status` | 获取应用、项目、会话和生成状态 |
-| `POST` | `/v1/app/activate` | 显示并激活应用窗口 |
-| `POST` | `/v1/projects/open` | 设置当前项目，示例：`{"path":"<project-path>"}` |
-| `POST` | `/v1/tasks` | 创建任务草稿，示例：`{"title":"任务名","instruction":"任务内容","project_path":"<project-path>"}` |
+| `GET` | `/v1/status` | Read local application status |
+| `POST` | `/v1/app/activate` | Activate the desktop window |
+| `POST` | `/v1/projects/open` | Set the current project path |
+| `POST` | `/v1/tasks` | Create a user-reviewable task draft |
 
-## 截图位置
+## Development Guide
 
-公开发布截图统一放在 `docs/images/`：
+The project intentionally keeps a direct desktop architecture without an account service, web frontend, ORM, or telemetry stack.
 
-- `docs/images/main-window.png`：主聊天窗口
-- `docs/images/settings.png`：模型设置页面
+Main modules:
 
-提交截图前必须确认画面中没有 API Key、私人路径、聊天隐私或其他个人信息。仓库当前不附带演示截图，避免使用未经脱敏的本机画面。
+```text
+dscode_assistant/
+├── app.py                 # application bootstrap and dependency assembly
+├── main_window.py         # main window and session navigation
+├── chat_widget.py         # chat workflow and ChatWorker integration
+├── model_providers.py     # provider contract and adapters
+├── context/               # deterministic context preparation and protection
+├── languages/             # local language metadata and detection
+├── database.py            # SQLite persistence
+├── settings.py            # local settings and keyring access
+└── automation.py          # localhost-only automation interface
+```
 
-## 开发说明
-
-项目保持小型、直接的桌面应用结构，不引入服务器、账号系统或遥测服务。开发前请阅读 [开发说明](docs/开发说明.md)。
-
-常用检查：
+Install development dependencies, then run:
 
 ```powershell
 python -m compileall -q dscode_assistant tests
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
-Windows 打包：
+Windows packaging:
 
 ```bat
 build_windows.bat
 ```
 
-构建产物输出到 `release/`，该目录不会进入 Git。
+Generated packages are written under `release/` and are excluded from Git.
 
-## 项目文档
+See [the development guide](docs/Development_Guide.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 
-- [用户使用说明](docs/用户使用说明.md)
-- [开发说明](docs/开发说明.md)
-- [API 配置说明](docs/API配置说明.md)
-- [常见问题](docs/常见问题.md)
-- [贡献指南](CONTRIBUTING.md)
-- [版本变更记录](CHANGELOG.md)
-- [v0.1.0 版本说明](RELEASE_NOTES_v0.1.0.md)
+## Release Notes
 
-## 联系方式
+- [v0.6.0 release changelog](CHANGELOG_v0.6.0.md)
+- [Full changelog](CHANGELOG.md)
+- [v0.1.0 historical release notes](RELEASE_NOTES_v0.1.0.md)
 
-Bug、功能建议和可复现的问题请优先通过 [GitHub Issues](https://github.com/suisui0601a-pixel/DSCode-Assistant/issues) 提交。提交前请移除 API Key、Token、私人代码、本地数据库及其他敏感信息。
+## Support
 
-### International Support
+Use [GitHub Issues](https://github.com/suisui0601a-pixel/DSCode-Assistant/issues) for reproducible bugs and feature requests. Remove API keys, private source code, local databases, private paths, and personal information before posting.
 
-Email: [dscode.assistant@gmail.com](mailto:dscode.assistant@gmail.com)
+- International support: [dscode.assistant@gmail.com](mailto:dscode.assistant@gmail.com)
+- 国内用户支持: [qwertyuiop076@163.com](mailto:qwertyuiop076@163.com)
 
-### 国内用户支持
+## License
 
-邮箱：[qwertyuiop076@163.com](mailto:qwertyuiop076@163.com)
+DSCode Assistant is licensed under the [MIT License](LICENSE). MIT permits commercial use; the project being maintained as a free, non-profit-oriented open-source effort does not add a non-commercial restriction to the license.
 
-## 开源协议
+## Disclaimer
 
-项目采用 [MIT License](LICENSE)。选择 MIT 的原因是协议简洁、依赖兼容性好，适合个人维护的免费公益项目，也便于社区学习、修改和分发。
-
-项目本身无盈利目的，但 MIT 是标准开源协议，**不会禁止商业使用**。任何分发者都必须保留原始版权与许可声明，软件按“原样”提供，不附带担保。
-
-## 免责声明
-
-DSCode Assistant 与 DeepSeek 官方不存在隶属或担保关系。模型服务可用性、输出质量、内容合规和 API 费用由对应服务提供商及用户账户规则决定。请勿向模型服务发送无权处理的代码、密钥或个人数据。
+DSCode Assistant is not affiliated with or endorsed by DeepSeek. Provider availability, model output, content compliance, retention, and API charges are governed by the selected provider and the user's account.

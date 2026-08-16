@@ -1,43 +1,38 @@
-# 为 DSCode Assistant 贡献
+# Contributing to DSCode Assistant
 
-感谢你关注 DSCode Assistant。项目由个人维护，提交清晰、范围明确的问题和改动有助于更快完成确认与合并。
+[简体中文](CONTRIBUTING.zh-CN.md)
 
-## 提交 Issue
+Thank you for contributing to DSCode Assistant. Keep changes focused, testable, and consistent with the project's local-first and privacy-first boundaries.
 
-在创建新 Issue 前，请先搜索现有 Issue，确认问题或建议尚未被记录。然后选择对应模板：
+## Before opening an Issue
 
-- Bug：说明软件版本、操作系统、复现步骤、预期行为与实际行为。
-- 功能建议：说明使用场景、需要解决的问题和期望结果。
+- Search existing Issues first.
+- Include the DSCode Assistant version, operating system, reproduction steps, expected behavior, and actual behavior.
+- Remove API keys, tokens, passwords, private source code, chat history, local databases, logs containing private content, personal paths, and unreviewed screenshots.
+- Use the Bug Report or Feature Request template when applicable.
 
-请提供最小、可复现的信息。不要提交 API Key、Token、密码、私人代码、聊天记录、本地数据库、日志原文或含隐私的截图。
+## Pull Requests
 
-GitHub Issues：<https://github.com/suisui0601a-pixel/DSCode-Assistant/issues>
+1. Fork the repository and create a focused branch from the latest public code.
+2. Keep one complete feature, fix, or documentation change per Pull Request.
+3. Preserve the no-account, no-telemetry, no-developer-relay design unless a public Issue explicitly discusses a boundary change.
+4. Run the syntax check, full tests, and change-specific tests.
+5. Review the staged files for credentials, user data, build output, caches, and generated databases.
+6. Explain the reason for the change, compatibility impact, and actual test results.
 
-## 邮件反馈
+Changes to provider request formats, the SQLite schema, `ChatWorker`, or privacy boundaries should be discussed in an Issue before implementation.
 
-无法使用 GitHub Issue 时，可通过以下邮箱反馈：
-
-- International Support: <dscode.assistant@gmail.com>
-- 国内用户支持：<qwertyuiop076@163.com>
-
-邮件应包含简短标题、软件版本、操作系统和问题描述。请勿通过邮件发送凭据或未脱敏的私人数据。
-
-## 参与贡献
-
-1. Fork 仓库并从最新公开代码创建独立分支。
-2. 一次改动只处理一个完整功能或明确修复。
-3. 保持本地优先、无账号系统、无开发者服务器和无遥测的项目原则。
-4. 提交前运行语法检查、单元测试及与改动相关的专项测试。
-5. 检查提交中不包含 `.env`、API Key、Token、本地数据库、构建缓存或私人文件。
-6. 创建 Pull Request，清楚说明改动原因、测试结果和兼容性影响。
-
-涉及 API 请求格式、数据库结构、ChatWorker 线程模型或安全边界的改动，请先创建 Issue 讨论，不要在未说明影响的情况下直接大规模重构。
-
-## 开发检查
+## Development checks
 
 ```powershell
 python -m compileall -q dscode_assistant tests
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
-详细开发说明参见 [docs/开发说明.md](docs/开发说明.md)。
+See the [development guide](docs/Development_Guide.md) for the current module layout and Windows build notes.
+
+## Contact
+
+- GitHub Issues: <https://github.com/suisui0601a-pixel/DSCode-Assistant/issues>
+- International support: <dscode.assistant@gmail.com>
+- 国内用户支持: <qwertyuiop076@163.com>

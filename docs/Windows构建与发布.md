@@ -1,6 +1,8 @@
 # DSCode Assistant Windows 构建与发布
 
-本文档描述 DSCode Assistant `0.1.0` 的 Windows 本地构建流程。构建产物不包含用户配置、API Key、聊天记录或 SQLite 数据库。
+[English](Windows_Build_and_Release.md)
+
+本文档描述 DSCode Assistant `0.6.0` 的 Windows 本地构建流程。构建产物不包含用户配置、API 密钥、聊天记录或 SQLite 数据库。
 
 ## 构建环境
 
@@ -42,9 +44,9 @@ build_windows.bat
 
 ```text
 release/
-├── DSCode Assistant Setup v0.1.0.exe
-├── DSCode Assistant v0.1.0 Portable.zip
-└── v0.1.0/
+├── DSCode Assistant Setup v0.6.0.exe
+├── DSCode Assistant v0.6.0 Portable.zip
+└── v0.6.0/
     └── portable/
         ├── DSCode Assistant.exe
         ├── LICENSE.txt
@@ -57,9 +59,9 @@ release/
 - 普通设置：`%APPDATA%\DSCodeAssistant\settings.json`
 - SQLite 历史：`%APPDATA%\DSCodeAssistant\dscode_assistant.db`
 - 启动异常诊断：`%APPDATA%\DSCodeAssistant` 下的本地诊断文件
-- API Key：Windows 凭据管理器，由 `keyring` 的 Windows 后端保存
+- API 密钥：Windows 凭据管理器，由 `keyring` 的 Windows 后端保存
 
-安装目录和便携版目录都不保存用户 API Key。安装版和便携版使用相同的本地用户数据目录，因此升级或切换版本时可以继续读取原有配置和历史记录。
+安装目录和便携版目录都不保存用户 API 密钥。安装版和便携版使用相同的本地用户数据目录，因此升级或切换版本时可以继续读取原有配置和历史记录。
 
 ## 发布前验证
 
