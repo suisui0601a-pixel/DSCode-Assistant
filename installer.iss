@@ -1,9 +1,9 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.6.0"
 #endif
 
 #ifndef BuildSource
-  #define BuildSource "release\v0.1.0\portable"
+  #define BuildSource "release\v0.6.0\portable"
 #endif
 
 #ifndef AppIdValue
